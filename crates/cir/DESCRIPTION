@@ -1,0 +1,22 @@
+Package: cir
+Title: Conditional Independence Testing
+Version: 0.0.0.9000
+Authors@R:
+    person("GIP", "House", email = "giphouse@example.com", role = c("aut", "cre"))
+Description: R bindings for a collection of conditional independence tests
+    implemented in Rust. Supports discrete, continuous, and mixed data via
+    chi-squared, log-likelihood, Cressie-Read, Freeman-Tukey, Pearson
+    correlation, modified log-likelihood, and Pearson equivalence tests.
+License: MIT
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Config/rextendr/version: 0.5.0
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0, xz
+Depends:
+    R (>= 4.2)
+Suggests:
+    devtools,
+    rextendr,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

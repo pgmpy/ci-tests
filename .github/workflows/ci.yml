@@ -38,7 +38,12 @@ jobs:
 
       - name: Install system dependencies
         run: sudo apt-get install -y libopenblas-dev
-        
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,10 +52,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run Clippy
-        run: cargo clippy --workspace --exclude ci_python --exclude ci_r --exclude ci_js --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude ci_python --exclude ci_js --all-targets -- -D warnings
 
   test:
-    name: Test Suite
+    name: Rust Tests
     needs: [fmt, clippy]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -76,7 +81,43 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --workspace --exclude ci_python --exclude ci_r --exclude ci_js --verbose
+        run: cargo build --workspace --exclude ci_python --exclude cir --exclude ci_js --verbose
 
       - name: Run tests
-        run: cargo test --workspace --exclude ci_python --exclude ci_r --exclude ci_js --verbose
+        run: cargo test --workspace --exclude ci_python --exclude cir --exclude ci_js --verbose
+
+  r-test:
+    name: R Package Tests
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install R package dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: crates/cir
+          extra-packages: any::devtools, any::rextendr
+
+      - name: Generate Makevars and R wrappers
+        working-directory: crates/cir
+        run: rextendr::document()
+        shell: Rscript {0}
+
+      - name: Run R tests
+        working-directory: crates/cir
+        run: devtools::test(reporter = "summary")
+        shell: Rscript {0}

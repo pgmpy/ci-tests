@@ -138,10 +138,10 @@ celerybeat.pid
 
 # Environments
 .env
-.venv
-env/
-venv/
-ENV/
+.venv*/
+env*/
+venv*/
+ENV*/
 env.bak/
 venv.bak/
 
@@ -189,3 +189,29 @@ pyrightconfig.json
 .DS_Store
 Thumbs.db
 todo.txt
+
+
+# Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+.ionide
+
+# End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
+
+*.code-workspace

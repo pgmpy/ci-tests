@@ -1,7 +1,7 @@
 use crate::strategy::{CITest, CITestDataType, TestResult};
 use anyhow::{ensure, Context};
+use nalgebra::{DMatrix, DVector};
 use ndarray::{Array1, Array2, ArrayView1};
-use ndarray_linalg::LeastSquaresSvd;
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use statrs::statistics::Statistics;
 
@@ -15,7 +15,21 @@ use statrs::statistics::Statistics;
 ///
 /// - [Pearson correlation coefficient](https://en.wikipedia.org/wiki/Pearson_correlation_coefficient)
 /// - [Partial correlation using linear regression](https://en.wikipedia.org/wiki/Partial_correlation#Using_linear_regression)
-pub struct PearsonCorrelation {}
+#[derive(Debug, Clone, PartialEq)]
+pub struct PearsonCorrelation {
+    pub boolean: bool,
+    pub significance_level: f64,
+}
+
+impl PearsonCorrelation {
+    #[must_use]
+    pub fn new(boolean: bool, significance_level: f64) -> Self {
+        Self {
+            boolean,
+            significance_level,
+        }
+    }
+}
 
 impl CITest for PearsonCorrelation {
     /// Test the independence condition X ⊥ Y | Z using Pearson correlation.
@@ -38,32 +52,40 @@ impl CITest for PearsonCorrelation {
         x_values: Array1<f64>,
         y_values: Array1<f64>,
         z: Array2<f64>,
-        boolean: bool,
-        significance_level: f64,
     ) -> anyhow::Result<TestResult> {
         if z.is_empty() {
             let (coefficient, p_value) = pearsonr(&x_values.view(), &y_values.view())?;
             Ok(wrap_result(
-                boolean,
+                self.boolean,
                 p_value,
                 coefficient,
-                significance_level,
+                self.significance_level,
             ))
         } else {
-            // Use linear regression to compute residuals and test independence on it.
-            let x_coefficient = z.view().least_squares(&x_values.view())?.solution;
+            let z_na = DMatrix::from_row_iterator(z.nrows(), z.ncols(), z.iter().copied());
+            let x_na = DVector::from_iterator(x_values.len(), x_values.iter().copied());
+            let y_na = DVector::from_iterator(y_values.len(), y_values.iter().copied());
 
-            let y_coefficient = z.view().least_squares(&y_values.view())?.solution;
+            let svd = z_na.svd(true, true);
+            let x_coefficient = svd
+                .solve(&x_na, 1e-10)
+                .map_err(|e| anyhow::anyhow!("least squares failed for x: {e}"))?;
+            let y_coefficient = svd
+                .solve(&y_na, 1e-10)
+                .map_err(|e| anyhow::anyhow!("least squares failed for y: {e}"))?;
 
-            let residual_x = x_values - z.dot(&x_coefficient);
-            let residual_y = y_values - z.dot(&y_coefficient);
+            let x_coef_nd = Array1::from_vec(x_coefficient.iter().copied().collect());
+            let y_coef_nd = Array1::from_vec(y_coefficient.iter().copied().collect());
+
+            let residual_x = x_values - z.dot(&x_coef_nd);
+            let residual_y = y_values - z.dot(&y_coef_nd);
 
             let (coefficient, p_value) = pearsonr(&residual_x.view(), &residual_y.view())?;
             Ok(wrap_result(
-                boolean,
+                self.boolean,
                 p_value,
                 coefficient,
-                significance_level,
+                self.significance_level,
             ))
         }
     }
@@ -74,7 +96,8 @@ impl CITest for PearsonCorrelation {
 }
 
 /// Construct the appropriate [`TestResult`] variant based on the `boolean` flag.
-fn wrap_result(
+#[must_use]
+pub fn wrap_result(
     boolean: bool,
     p_value: f64,
     coefficient: f64,
@@ -151,21 +174,29 @@ mod tests {
     }
 
     fn pearson() -> PearsonCorrelation {
-        PearsonCorrelation {}
+        PearsonCorrelation {
+            boolean: false,
+            significance_level: 0.05,
+        }
+    }
+
+    fn pearson_boolean() -> PearsonCorrelation {
+        PearsonCorrelation {
+            boolean: true,
+            significance_level: 0.05,
+        }
     }
 
     // --- 1. Empty array + independent X, Y + boolean=false ---
     // X and Y are independently generated, no conditioning variables.
     // Expected: high p_value (> 0.05), low |coefficient| (< 0.1)
     #[test]
-    fn unconditional_independent_data_is_not_rejected() {
+    fn uncond_independent_data_accepted() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let y = gen_normal(N, 0.0, 1.0, &mut rng);
 
-        let result = pearson()
-            .run_test(x, y, empty_array(), false, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson().run_test(x, y, empty_array()).unwrap();
         match result {
             TestResult::PValue(p_value, coefficient) => {
                 assert!(
@@ -184,14 +215,12 @@ mod tests {
     // --- 2. Empty array + independent X, Y + boolean=true ---
     // Expected: true (variables are independent)
     #[test]
-    fn unconditional_boolean_accepts_independent() {
+    fn uncond_bool_accepts_independent() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let y = gen_normal(N, 0.0, 1.0, &mut rng);
 
-        let result = pearson()
-            .run_test(x, y, empty_array(), true, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson_boolean().run_test(x, y, empty_array()).unwrap();
         match result {
             TestResult::Boolean(independent) => {
                 assert!(independent, "Independent data should return true");
@@ -204,15 +233,13 @@ mod tests {
     // Y = 3*X + small noise, so they are strongly correlated.
     // Expected: low p_value (< 0.05), high |coefficient| (> 0.9)
     #[test]
-    fn unconditional_dependent_data_is_rejected() {
+    fn uncond_dependent_data_rejected() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let noise = gen_normal(N, 0.0, 0.1, &mut rng);
         let y = &x * 3.0 + &noise;
 
-        let result = pearson()
-            .run_test(x, y, empty_array(), false, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson().run_test(x, y, empty_array()).unwrap();
         match result {
             TestResult::PValue(p_value, coefficient) => {
                 assert!(
@@ -231,15 +258,13 @@ mod tests {
     // --- 4. Empty array + correlated X, Y + boolean=true ---
     // Expected: false (variables are NOT independent)
     #[test]
-    fn unconditional_boolean_rejects_dependent() {
+    fn uncond_bool_rejects_dependent() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let noise = gen_normal(N, 0.0, 0.1, &mut rng);
         let y = &x * 3.0 + &noise;
 
-        let result = pearson()
-            .run_test(x, y, empty_array(), true, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson_boolean().run_test(x, y, empty_array()).unwrap();
         match result {
             TestResult::Boolean(independent) => {
                 assert!(!independent, "Correlated data should return false");
@@ -253,7 +278,7 @@ mod tests {
     // After conditioning on Z, residuals should be independent.
     // Expected: high p_value (> 0.05), low |coefficient| (< 0.1)
     #[test]
-    fn conditional_independent_data_is_not_rejected() {
+    fn cond_independent_data_accepted() {
         let mut rng = seeded_rng();
         let z = gen_normal(N, 0.0, 1.0, &mut rng);
         let noise_x = gen_normal(N, 0.0, 0.1, &mut rng);
@@ -262,9 +287,7 @@ mod tests {
         let y = &z * 2.0 + &noise_y;
         let array = z.insert_axis(Axis(1));
 
-        let result = pearson()
-            .run_test(x, y, array, false, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson().run_test(x, y, array).unwrap();
         match result {
             TestResult::PValue(p_value, coefficient) => {
                 assert!(
@@ -283,7 +306,7 @@ mod tests {
     // --- 6. Non-empty array + conditionally independent + boolean=true ---
     // Expected: true (conditionally independent given Z)
     #[test]
-    fn conditional_boolean_accepts_independent() {
+    fn cond_bool_accepts_independent() {
         let mut rng = seeded_rng();
         let z = gen_normal(N, 0.0, 1.0, &mut rng);
         let noise_x = gen_normal(N, 0.0, 0.1, &mut rng);
@@ -292,9 +315,7 @@ mod tests {
         let y = &z * 2.0 + &noise_y;
         let array = z.insert_axis(Axis(1));
 
-        let result = pearson()
-            .run_test(x, y, array, true, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson_boolean().run_test(x, y, array).unwrap();
         match result {
             TestResult::Boolean(independent) => {
                 assert!(
@@ -311,7 +332,7 @@ mod tests {
     // Conditioning on Z makes X and Y dependent.
     // Expected: low p_value (< 0.05), high |coefficient|
     #[test]
-    fn conditional_dependent_data_is_rejected() {
+    fn cond_dependent_data_rejected() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let y = gen_normal(N, 0.0, 1.0, &mut rng);
@@ -319,9 +340,7 @@ mod tests {
         let z = &x * 2.0 + &y * 2.0 + &noise;
         let array = z.insert_axis(Axis(1));
 
-        let result = pearson()
-            .run_test(x, y, array, false, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson().run_test(x, y, array).unwrap();
         match result {
             TestResult::PValue(p_value, coefficient) => {
                 assert!(
@@ -340,7 +359,7 @@ mod tests {
     // --- 8. Non-empty array + conditionally dependent (v-structure) + boolean=true ---
     // Expected: false (NOT independent after conditioning on collider)
     #[test]
-    fn conditional_boolean_rejects_dependent() {
+    fn cond_bool_rejects_dependent() {
         let mut rng = seeded_rng();
         let x = gen_normal(N, 0.0, 1.0, &mut rng);
         let y = gen_normal(N, 0.0, 1.0, &mut rng);
@@ -348,9 +367,7 @@ mod tests {
         let z = &x * 2.0 + &y * 2.0 + &noise;
         let array = z.insert_axis(Axis(1));
 
-        let result = pearson()
-            .run_test(x, y, array, true, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson_boolean().run_test(x, y, array).unwrap();
         match result {
             TestResult::Boolean(independent) => {
                 assert!(
@@ -366,7 +383,7 @@ mod tests {
     // After conditioning on all three, residuals should be independent.
     // Expected: high p_value, low |coefficient|
     #[test]
-    fn conditional_multiple_vars_independent_is_not_rejected() {
+    fn cond_multiple_vars_independent_not_rejected() {
         let mut rng = seeded_rng();
         let z_1 = gen_normal(N, 0.0, 1.0, &mut rng);
         let z_2 = gen_normal(N, 0.0, 1.0, &mut rng);
@@ -378,9 +395,7 @@ mod tests {
 
         let array = stack(Axis(1), &[z_1.view(), z_2.view(), z_3.view()]).unwrap();
 
-        let result = pearson()
-            .run_test(x, y, array, false, SIGNIFICANCE_LEVEL)
-            .unwrap();
+        let result = pearson().run_test(x, y, array).unwrap();
         match result {
             TestResult::PValue(p_value, coefficient) => {
                 assert!(

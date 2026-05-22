@@ -1,6 +1,7 @@
 use ndarray::{Array1, Array2};
 
 /// The outcome of a conditional independence test.
+#[derive(Debug, Clone, PartialEq)]
 pub enum TestResult {
     PValue(f64, f64),
     Statistic(f64, f64, usize),
@@ -32,8 +33,6 @@ pub trait CITest: Send + Sync {
         x_values: Array1<f64>,
         y_values: Array1<f64>,
         z: Array2<f64>,
-        boolean: bool,
-        significance_level: f64,
     ) -> anyhow::Result<TestResult>;
 
     /// Data types that a test supports.

@@ -1,0 +1,23 @@
+[package]
+name = 'cir'
+publish = false
+version = '0.1.0'
+edition = '2021'
+rust-version = '1.65'
+
+[lib]
+crate-type = [ 'rlib', 'staticlib' ]
+name = 'cir'
+
+[[bin]]
+name = 'document'
+path = 'document.rs'
+
+[dependencies]
+ci_core = { path = "../../../ci-core" }
+anyhow = "1"
+extendr-api = { version = '0.9.0', features = ['ndarray'] }
+
+[profile.release]
+lto = true
+codegen-units = 1

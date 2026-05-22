@@ -9,9 +9,7 @@ repository = ""
 
 [dependencies]
 ci_core = { path = "../ci-core" }
+ndarray = {workspace = true}
 
 [lints]
 workspace = true
-
-[lib]
-crate-type = ["cdylib"]

@@ -2,14 +2,14 @@
 members = [
     "crates/ci-core",
     "crates/ci-python",
-    "crates/ci-r",
+    "crates/cir/src/rust",
     "crates/ci-js",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1"
-ndarray = "0.17"
+ndarray = "0.16"
 statrs = { version = "0.18.0"}
 
 

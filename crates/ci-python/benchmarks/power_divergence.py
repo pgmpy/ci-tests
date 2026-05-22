@@ -1,12 +1,11 @@
 from pgmpy.estimators.CITests import pearsonr, power_divergence
 import numpy as np
-from ci_python import PyRegistry
+from ci_python import CITest
 import time
 import pandas as pd
 
 
-registry = PyRegistry()
-test = registry.get_test("pearson_correlation")
+test = CITest("pearson_correlation")
 
 N_ITER = 50
 
@@ -36,21 +35,21 @@ def bench(size):
     )
 
     # Warmup
-    test(array_empty, x_ind, y_ind, boolean=False)
-    test(array_z, x_cond, y_cond, boolean=False)
+    test(x_ind, y_ind, array_empty)
+    test(x_cond, y_cond, array_z)
     pearsonr(X="X", Y="Y", Z=[], data=df_ind, boolean=False)
     pearsonr(X="X", Y="Y", Z=["Z1", "Z2"], data=df_cind, boolean=False)
 
     # Correctness check (single run)
-    print(f"  Rust  empty Z: {test(array_empty, x_ind, y_ind, boolean=False)}")
-    print(f"  Rust  with Z:  {test(array_z, x_cond, y_cond, boolean=False)}")
+    print(f"  Rust  empty Z: {test(x_ind, y_ind, array_empty)}")
+    print(f"  Rust  with Z:  {test(x_cond, y_cond, array_z)}")
     coef, pval = pearsonr(X="X", Y="Y", Z=["Z1", "Z2"], data=df_cind, boolean=False)
     print(f"  pgmpy with Z:  ({pval}, {coef})")
 
     # Benchmark
     t0 = time.perf_counter()
     for _ in range(N_ITER):
-        test(array_empty, x_ind, y_ind, boolean=False)
+        test(x_ind, y_ind, array_empty)
     rust_empty = (time.perf_counter() - t0) / N_ITER
 
     t0 = time.perf_counter()
@@ -60,7 +59,7 @@ def bench(size):
 
     t0 = time.perf_counter()
     for _ in range(N_ITER):
-        test(array_z, x_cond, y_cond, boolean=False)
+        test(x_cond, y_cond, array_z)
     rust_z = (time.perf_counter() - t0) / N_ITER
 
     t0 = time.perf_counter()
@@ -86,7 +85,7 @@ for size in [1_000, 10_000]:
 # ---------------------------------------------------------------------------
 # Scaling benchmark: Cressie-Read with increasing discrete conditioning vars
 # ---------------------------------------------------------------------------
-cressie_test = registry.get_test("cressie_read")
+cressie_test = CITest("cressie_read")
 
 
 def bench_scaling(size, n_z_vars, n_iter=20):
@@ -101,14 +100,14 @@ def bench_scaling(size, n_z_vars, n_iter=20):
     z_names = list(z_cols.keys())
 
     # Warmup
-    cressie_test(array_z, x, y, boolean=False)
+    cressie_test(x, y, array_z)
     power_divergence(
         X="X", Y="Y", Z=z_names, data=df, boolean=False, lambda_="cressie-read"
     )
 
     t0 = time.perf_counter()
     for _ in range(n_iter):
-        cressie_test(array_z, x, y, boolean=False)
+        cressie_test(x, y, array_z)
     rust_t = (time.perf_counter() - t0) / n_iter
 
     t0 = time.perf_counter()

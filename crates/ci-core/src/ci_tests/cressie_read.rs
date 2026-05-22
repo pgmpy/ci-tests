@@ -4,7 +4,21 @@ use ndarray::{Array1, Array2};
 
 const CRESSIE_READ_LAMBDA: f64 = 2.0 / 3.0;
 
-pub struct CressieRead {}
+#[derive(Debug, Clone, PartialEq)]
+pub struct CressieRead {
+    pub boolean: bool,
+    pub significance_level: f64,
+}
+
+impl CressieRead {
+    #[must_use]
+    pub fn new(boolean: bool, significance_level: f64) -> Self {
+        Self {
+            boolean,
+            significance_level,
+        }
+    }
+}
 
 impl CITest for CressieRead {
     fn run_test(
@@ -12,15 +26,13 @@ impl CITest for CressieRead {
         x_values: Array1<f64>,
         y_values: Array1<f64>,
         z: Array2<f64>,
-        boolean: bool,
-        significance_level: f64,
     ) -> anyhow::Result<TestResult> {
         power_divergence(
             &x_values,
             &y_values,
             &z,
-            boolean,
-            significance_level,
+            self.boolean,
+            self.significance_level,
             CRESSIE_READ_LAMBDA,
         )
     }
@@ -33,7 +45,6 @@ impl CITest for CressieRead {
 mod tests {
     use super::*;
     use ndarray::array;
-    const SIGNIFICANCE_LEVEL: f64 = 0.05;
 
     fn unwrap_correlated(result: &TestResult) -> (f64, f64, usize) {
         match result {
@@ -53,20 +64,17 @@ mod tests {
     // The chi-squared statistic should be 0 and the test should not reject independence.
     #[test]
     fn unconditional_independent_data_is_not_rejected() {
-        let test = CressieRead {};
+        let test = CressieRead {
+            boolean: false,
+            significance_level: 0.05,
+        };
         let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
         let empty_z = Array2::<f64>::zeros((0, 0));
 
         let (p_value, statistic, dof) = unwrap_correlated(
             &test
-                .run_test(
-                    x.clone(),
-                    y.clone(),
-                    empty_z.clone(),
-                    false,
-                    SIGNIFICANCE_LEVEL,
-                )
+                .run_test(x.clone(), y.clone(), empty_z.clone())
                 .unwrap(),
         );
         assert!(
@@ -77,9 +85,12 @@ mod tests {
         assert_eq!(dof, 1);
 
         let independent = unwrap_boolean(
-            &test
-                .run_test(x, y, empty_z, true, SIGNIFICANCE_LEVEL)
-                .unwrap(),
+            &CressieRead {
+                boolean: true,
+                significance_level: 0.05,
+            }
+            .run_test(x, y, empty_z)
+            .unwrap(),
         );
         assert!(independent, "expected fail-to-reject (independent=true)");
     }
@@ -88,32 +99,33 @@ mod tests {
     // The statistic should be large and the test should reject independence.
     #[test]
     fn unconditional_dependent_data_is_rejected() {
-        let test = CressieRead {};
+        let test = CressieRead {
+            boolean: false,
+            significance_level: 0.05,
+        };
         let x = array![1., 1., 1., 1., 2., 2., 2., 2.];
         let y = array![1., 1., 1., 1., 2., 2., 2., 2.];
         let empty_z = Array2::<f64>::zeros((0, 0));
 
         let (p_value, statistic, _dof) = unwrap_correlated(
             &test
-                .run_test(
-                    x.clone(),
-                    y.clone(),
-                    empty_z.clone(),
-                    false,
-                    SIGNIFICANCE_LEVEL,
-                )
+                .run_test(x.clone(), y.clone(), empty_z.clone())
                 .unwrap(),
         );
         assert!(statistic > 5.0, "expected large statistic, got {statistic}");
         assert!(
-            p_value < SIGNIFICANCE_LEVEL,
-            "expected p < {SIGNIFICANCE_LEVEL}, got {p_value}"
+            p_value < test.significance_level,
+            "expected p < {}, got {p_value}",
+            test.significance_level
         );
 
         let independent = unwrap_boolean(
-            &test
-                .run_test(x, y, empty_z, true, SIGNIFICANCE_LEVEL)
-                .unwrap(),
+            &CressieRead {
+                boolean: true,
+                significance_level: 0.05,
+            }
+            .run_test(x, y, empty_z)
+            .unwrap(),
         );
         assert!(!independent, "expected reject (independent=false)");
     }
@@ -123,16 +135,16 @@ mod tests {
     // Z=1: X=[1,1,2,2], Y=[1,2,1,2]  (independent)
     #[test]
     fn conditional_independent_per_group() {
-        let test = CressieRead {};
+        let test = CressieRead {
+            boolean: false,
+            significance_level: 0.05,
+        };
         let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
         let z = Array2::from_shape_vec((8, 1), vec![0., 0., 0., 0., 1., 1., 1., 1.]).unwrap();
 
-        let (p_value, statistic, dof) = unwrap_correlated(
-            &test
-                .run_test(x.clone(), y.clone(), z.clone(), false, SIGNIFICANCE_LEVEL)
-                .unwrap(),
-        );
+        let (p_value, statistic, dof) =
+            unwrap_correlated(&test.run_test(x.clone(), y.clone(), z.clone()).unwrap());
         assert!(
             statistic.abs() < 1e-9,
             "expected statistic ~0, got {statistic}"
@@ -141,8 +153,14 @@ mod tests {
         // Two groups, each contributing dof = (2-1)*(2-1) = 1.
         assert_eq!(dof, 2);
 
-        let independent =
-            unwrap_boolean(&test.run_test(x, y, z, true, SIGNIFICANCE_LEVEL).unwrap());
+        let independent = unwrap_boolean(
+            &CressieRead {
+                boolean: true,
+                significance_level: 0.05,
+            }
+            .run_test(x, y, z)
+            .unwrap(),
+        );
         assert!(independent);
     }
 
@@ -150,17 +168,20 @@ mod tests {
     // Z=0: X=Y=[1,1,2,2]; Z=1: X=Y=[1,1,2,2]. Should reject.
     #[test]
     fn conditional_dependent_per_group() {
-        let test = CressieRead {};
+        let test = CressieRead {
+            boolean: false,
+            significance_level: 0.05,
+        };
         let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let z = Array2::from_shape_vec((8, 1), vec![0., 0., 0., 0., 1., 1., 1., 1.]).unwrap();
 
-        let (p_value, statistic, _dof) =
-            unwrap_correlated(&test.run_test(x, y, z, false, SIGNIFICANCE_LEVEL).unwrap());
+        let (p_value, statistic, _dof) = unwrap_correlated(&test.run_test(x, y, z).unwrap());
         assert!(statistic > 5.0, "expected large statistic, got {statistic}");
         assert!(
-            p_value < SIGNIFICANCE_LEVEL,
-            "expected p < {SIGNIFICANCE_LEVEL}, got {p_value}"
+            p_value < test.significance_level,
+            "expected p < {}, got {p_value}",
+            test.significance_level
         );
     }
 }
