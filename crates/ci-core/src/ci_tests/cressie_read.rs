@@ -4,6 +4,10 @@ use ndarray::{Array1, Array2};
 
 const CRESSIE_READ_LAMBDA: f64 = 2.0 / 3.0;
 
+/// Cressie–Read conditional independence test (λ = 2/3).
+///
+/// Operates on discrete data only. Delegates to the power-divergence family
+/// with λ = 2/3, the Cressie–Read statistic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CressieRead {
     pub boolean: bool,
@@ -44,6 +48,7 @@ impl CITest for CressieRead {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::EPS;
     use ndarray::array;
 
     fn unwrap_correlated(result: &TestResult) -> (f64, f64, usize) {
@@ -60,8 +65,6 @@ mod tests {
         }
     }
 
-    // Unconditional case: X and Y are perfectly independent (uniform 2x2 table).
-    // The chi-squared statistic should be 0 and the test should not reject independence.
     #[test]
     fn unconditional_independent_data_is_not_rejected() {
         let test = CressieRead {
@@ -78,7 +81,7 @@ mod tests {
                 .unwrap(),
         );
         assert!(
-            statistic.abs() < 1e-9,
+            statistic.abs() < EPS,
             "expected statistic ~0, got {statistic}"
         );
         assert!(p_value > 0.99, "expected p ~1, got {p_value}");
@@ -95,8 +98,6 @@ mod tests {
         assert!(independent, "expected fail-to-reject (independent=true)");
     }
 
-    // Unconditional case: X and Y are perfectly dependent (X == Y).
-    // The statistic should be large and the test should reject independence.
     #[test]
     fn unconditional_dependent_data_is_rejected() {
         let test = CressieRead {
@@ -130,9 +131,6 @@ mod tests {
         assert!(!independent, "expected reject (independent=false)");
     }
 
-    // Conditional case: within each Z group X and Y are independent.
-    // Z=0: X=[1,1,2,2], Y=[1,2,1,2]  (independent)
-    // Z=1: X=[1,1,2,2], Y=[1,2,1,2]  (independent)
     #[test]
     fn conditional_independent_per_group() {
         let test = CressieRead {
@@ -146,11 +144,10 @@ mod tests {
         let (p_value, statistic, dof) =
             unwrap_correlated(&test.run_test(x.clone(), y.clone(), z.clone()).unwrap());
         assert!(
-            statistic.abs() < 1e-9,
+            statistic.abs() < EPS,
             "expected statistic ~0, got {statistic}"
         );
         assert!(p_value > 0.99, "expected p ~1, got {p_value}");
-        // Two groups, each contributing dof = (2-1)*(2-1) = 1.
         assert_eq!(dof, 2);
 
         let independent = unwrap_boolean(
@@ -164,8 +161,6 @@ mod tests {
         assert!(independent);
     }
 
-    // Conditional case: within each Z group X and Y are perfectly dependent.
-    // Z=0: X=Y=[1,1,2,2]; Z=1: X=Y=[1,1,2,2]. Should reject.
     #[test]
     fn conditional_dependent_per_group() {
         let test = CressieRead {

@@ -1,17 +1,18 @@
 use crate::strategy::TestResult;
 use crate::utils::contingency_table::{
-    build_global_category_map, contingency_table, contingency_table_with_categories,
+    build_global_category_map, contingency_table, contingency_table_from_indices,
 };
 use crate::utils::contingency_test::contingency_test;
 use crate::utils::partition_indices::partition_indices;
+use anyhow::ensure;
 use ndarray::{Array1, Array2};
 use statrs::distribution::{ChiSquared, ContinuousCDF};
 
 /// Run a power-divergence based conditional independence test.
 ///
 /// # Errors
-/// Returns an error if the underlying contingency test or chi-squared
-/// distribution construction fails.
+/// Returns an error if the inputs are invalid or if the underlying contingency
+/// test or chi-squared distribution construction fails.
 pub fn power_divergence(
     x_values: &Array1<f64>,
     y_values: &Array1<f64>,
@@ -20,6 +21,18 @@ pub fn power_divergence(
     significance_level: f64,
     lambda: f64,
 ) -> anyhow::Result<TestResult> {
+    ensure!(
+        x_values.len() == y_values.len(),
+        "x and y must have the same length, got {} and {}",
+        x_values.len(),
+        y_values.len(),
+    );
+    ensure!(
+        z.ncols() == 0 || z.nrows() == x_values.len(),
+        "z must have the same number of rows as x and y ({}), got {}",
+        x_values.len(),
+        z.nrows(),
+    );
     if z.ncols() == 0 {
         let table = contingency_table(x_values, y_values);
         let (statistic, p_value, degrees_of_freedom) = contingency_test(&table, lambda)?;
@@ -37,13 +50,19 @@ pub fn power_divergence(
 
     let mut statistic = 0.0;
     let mut degrees_of_freedom = 0;
+
     for indices in partition_indices(z) {
-        let x_sub: Array1<f64> = indices.iter().map(|&i| x_values[i]).collect();
-        let y_sub: Array1<f64> = indices.iter().map(|&i| y_values[i]).collect();
-        let table = contingency_table_with_categories(&x_sub, &y_sub, &x_categories, &y_categories);
+        let table = contingency_table_from_indices(
+            &indices,
+            x_values,
+            y_values,
+            &x_categories,
+            &y_categories,
+        );
         let Ok((stat, _p, dof)) = contingency_test(&table, lambda) else {
             continue;
         };
+
         if dof == 0 {
             continue;
         }
@@ -81,6 +100,7 @@ fn wrap_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::EPS;
     use ndarray::{array, Array2};
 
     const LAMBDA: f64 = 1.0;
@@ -97,14 +117,12 @@ mod tests {
         }
     }
 
-    // Mismatched x and y lengths — contingency_table indexes by the
-    // longer array, causing an out-of-bounds panic.
     #[test]
-    #[should_panic(expected = "index 2 is out of bounds")]
-    fn unconditional_mismatched_lengths_panics() {
+    fn unconditional_mismatched_lengths_returns_error() {
         let x = array![1., 2., 3.];
         let y = array![1., 2.];
-        let _ = power_divergence(&x, &y, &empty_z(), false, SIGNIFICANCE_LEVEL, LAMBDA);
+        let result = power_divergence(&x, &y, &empty_z(), false, SIGNIFICANCE_LEVEL, LAMBDA);
+        assert!(result.is_err());
     }
 
     // A single observation produces a 1x1 table with dof=0.
@@ -116,8 +134,8 @@ mod tests {
             power_divergence(&x, &y, &empty_z(), false, SIGNIFICANCE_LEVEL, LAMBDA).unwrap();
         let (p, stat, dof) = unwrap_statistic(&result);
         assert_eq!(dof, 0);
-        assert!((p - 1.0).abs() < 1e-12);
-        assert!(stat.abs() < 1e-12);
+        assert!((p - 1.0).abs() < EPS);
+        assert!(stat.abs() < EPS);
     }
 
     // When X has only one distinct value the table has one row → dof=0.
@@ -129,7 +147,7 @@ mod tests {
             power_divergence(&x, &y, &empty_z(), false, SIGNIFICANCE_LEVEL, LAMBDA).unwrap();
         let (p, _stat, dof) = unwrap_statistic(&result);
         assert_eq!(dof, 0);
-        assert!((p - 1.0).abs() < 1e-12);
+        assert!((p - 1.0).abs() < EPS);
     }
 
     // When Y has only one distinct value the table has one column → dof=0.
@@ -141,7 +159,7 @@ mod tests {
             power_divergence(&x, &y, &empty_z(), false, SIGNIFICANCE_LEVEL, LAMBDA).unwrap();
         let (p, _stat, dof) = unwrap_statistic(&result);
         assert_eq!(dof, 0);
-        assert!((p - 1.0).abs() < 1e-12);
+        assert!((p - 1.0).abs() < EPS);
     }
 
     // NaN in x_values becomes its own category via OrderedFloat.
@@ -166,7 +184,7 @@ mod tests {
         let result = power_divergence(&x, &y, &z, false, SIGNIFICANCE_LEVEL, LAMBDA).unwrap();
         let (p, _stat, dof) = unwrap_statistic(&result);
         assert_eq!(dof, 0);
-        assert!((p - 1.0).abs() < 1e-12);
+        assert!((p - 1.0).abs() < EPS);
     }
 
     // Each Z-group has only one X value. Global category maps force a 2x2
@@ -180,6 +198,6 @@ mod tests {
         let result = power_divergence(&x, &y, &z, false, SIGNIFICANCE_LEVEL, LAMBDA).unwrap();
         let (p, _stat, dof) = unwrap_statistic(&result);
         assert_eq!(dof, 0);
-        assert!((p - 1.0).abs() < 1e-12);
+        assert!((p - 1.0).abs() < EPS);
     }
 }

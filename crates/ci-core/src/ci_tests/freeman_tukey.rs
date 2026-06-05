@@ -4,6 +4,10 @@ use ndarray::{Array1, Array2};
 
 const FREEMAN_TUKEY_LAMBDA: f64 = -1.0 / 2.0;
 
+/// Freeman–Tukey conditional independence test (λ = −1/2).
+///
+/// Operates on discrete data only. Delegates to the power-divergence family
+/// with λ = −1/2, the Freeman–Tukey statistic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FreemanTukey {
     pub boolean: bool,
@@ -46,6 +50,7 @@ impl CITest for FreemanTukey {
 #[allow(clippy::many_single_char_names)]
 mod tests {
     use super::*;
+    use crate::utils::EPS;
     use ndarray::{array, Array2};
 
     fn unwrap_correlated(r: &TestResult) -> (f64, f64, usize) {
@@ -66,7 +71,7 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!(stat.abs() < 1e-9);
+        assert!(stat.abs() < EPS);
         assert!(p > 0.99);
         assert_eq!(dof, 1);
     }
@@ -82,12 +87,11 @@ mod tests {
         let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.],];
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(stat.abs() < 1e-9);
+        assert!(stat.abs() < EPS);
         assert!(p > 0.99);
         assert_eq!(dof, 2);
     }
 
-    // scipy: power_divergence([[5,1],[1,5]], lambda_=-0.5) -> stat=6.319453539579289
     #[test]
     fn uncond_dependent_rejected() {
         let t = FreemanTukey {
@@ -99,8 +103,8 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!((stat - 6.319_453_539_579_289).abs() < 1e-9, "got {stat}");
-        assert!((p - 0.011_942_042_564_347_121).abs() < 1e-12, "got {p}");
+        assert!((stat - 6.319_453_539_579_289).abs() < EPS, "got {stat}");
+        assert!((p - 0.011_942_042_564_347_121).abs() < EPS, "got {p}");
         assert_eq!(dof, 1);
     }
 
@@ -129,13 +133,10 @@ mod tests {
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
         assert!(
-            (stat - 1.382_538_273_265_069_5).abs() < 1e-9,
+            (stat - 1.382_538_273_265_069_5).abs() < EPS,
             "got stat {stat}"
         );
-        assert!(
-            (p - 0.500_939_904_278_208_8).abs() < 1e-12,
-            "got p value {p}"
-        );
+        assert!((p - 0.500_939_904_278_208_8).abs() < EPS, "got p value {p}");
         assert_eq!(dof, 2);
     }
 

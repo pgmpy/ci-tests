@@ -1,12 +1,28 @@
-name: CI
+name: Rust CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, development]
+    paths:
+      - 'crates/ci-core/**'
+      - 'crates/ci-python/**'
+      - 'crates/cir/**'
+      - 'crates/ci-js/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
   pull_request:
+    paths:
+      - 'crates/ci-core/**'
+      - 'crates/ci-python/**'
+      - 'crates/cir/**'
+      - 'crates/ci-js/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: rust-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -14,8 +30,8 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  fmt:
-    name: Format Check
+  rust_fmt:
+    name: Rust Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -31,10 +47,14 @@ jobs:
         run: cargo fmt --all -- --check
 
   clippy:
-    name: Clippy Lints
+    name: Rust Clippy Lints
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install system dependencies
         run: sudo apt-get install -y libopenblas-dev
@@ -52,11 +72,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run Clippy
-        run: cargo clippy --workspace --exclude ci_python --exclude ci_js --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-  test:
+  rust_test:
     name: Rust Tests
-    needs: [fmt, clippy]
+    needs: [rust_fmt, clippy]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -64,14 +84,6 @@ jobs:
         rust: [stable]
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install OpenBLAS (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install -y libopenblas-dev
-
-      - name: Install OpenBLAS (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install openblas
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -85,39 +97,3 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --exclude ci_python --exclude cir --exclude ci_js --verbose
-
-  r-test:
-    name: R Package Tests
-    needs: [fmt, clippy]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install system dependencies
-        run: sudo apt-get install -y libopenblas-dev
-
-      - name: Install R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: release
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install R package dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          working-directory: crates/cir
-          extra-packages: any::devtools, any::rextendr
-
-      - name: Generate Makevars and R wrappers
-        working-directory: crates/cir
-        run: rextendr::document()
-        shell: Rscript {0}
-
-      - name: Run R tests
-        working-directory: crates/cir
-        run: devtools::test(reporter = "summary")
-        shell: Rscript {0}

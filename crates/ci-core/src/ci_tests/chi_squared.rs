@@ -1,9 +1,14 @@
 use crate::strategy::{CITest, CITestDataType, TestResult};
 use crate::utils::power_divergence::power_divergence;
+
 use ndarray::{Array1, Array2};
 
 const CHI_SQUARED_LAMBDA: f64 = 1.0;
 
+/// Pearson chi-squared conditional independence test (λ = 1).
+///
+/// Operates on discrete data only. Delegates to the power-divergence family
+/// with λ = 1, which is the classical chi-squared statistic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChiSquared {
     pub boolean: bool,
@@ -46,6 +51,7 @@ impl CITest for ChiSquared {
 #[allow(clippy::many_single_char_names)]
 mod tests {
     use super::*;
+    use crate::utils::EPS;
     use ndarray::{array, Array2};
 
     fn unwrap_correlated(r: &TestResult) -> (f64, f64, usize) {
@@ -66,7 +72,7 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!(stat.abs() < 1e-9, "stat should be ~0, got {stat}");
+        assert!(stat.abs() < EPS, "stat should be ~0, got {stat}");
         assert!(p > 0.99);
         assert_eq!(dof, 1);
     }
@@ -82,12 +88,11 @@ mod tests {
         let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(stat.abs() < 1e-9, "stat should be ~0, got {stat}");
+        assert!(stat.abs() < EPS, "stat should be ~0, got {stat}");
         assert!(p > 0.99);
         assert_eq!(dof, 2);
     }
 
-    // scipy: chi2_contingency([[4,0],[0,4]], lambda_=1, correction=False) -> stat=8.0, p=0.00468
     #[test]
     fn uncond_dependent_data_rejected() {
         let t = ChiSquared {
@@ -99,8 +104,8 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!((stat - 8.0).abs() < 1e-9, "got {stat}");
-        assert!((p - 0.004_677_734_981_047_276).abs() < 1e-12, "got {p}");
+        assert!((stat - 8.0).abs() < EPS, "got {stat}");
+        assert!((p - 0.004_677_734_981_047_276).abs() < EPS, "got {p}");
         assert_eq!(dof, 1);
     }
 
@@ -115,9 +120,9 @@ mod tests {
         let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!((stat - 8.0).abs() < 1e-9, "stat {stat} should be larger");
+        assert!((stat - 8.0).abs() < EPS, "stat {stat} should be larger");
         assert!(
-            (p - 0.018_315_638_888_734_193).abs() < 1e-12,
+            (p - 0.018_315_638_888_734_193).abs() < EPS,
             "rejected p value {p}"
         );
         assert_eq!(dof, 2);
@@ -130,13 +135,11 @@ mod tests {
             significance_level: 0.05,
         };
         let empty = Array2::<f64>::zeros((0, 0));
-        // independent data -> should return true (fail to reject)
         let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
         let r = t.run_test(x, y, empty.clone()).unwrap();
         assert!(matches!(r, TestResult::Boolean(true)));
 
-        // dependent data -> should return false (reject)
         let x = array![1., 1., 1., 1., 2., 2., 2., 2.];
         let y = array![1., 1., 1., 1., 2., 2., 2., 2.];
         let r = t.run_test(x, y, empty).unwrap();
@@ -145,7 +148,6 @@ mod tests {
 
     #[test]
     fn cond_boolean_mode() {
-        //accepted
         let t = ChiSquared {
             boolean: true,
             significance_level: 0.05,
@@ -156,7 +158,6 @@ mod tests {
         let r = t.run_test(x, y, z).unwrap();
         assert!(matches!(r, TestResult::Boolean(true)));
 
-        //rejected
         let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];

@@ -1,0 +1,102 @@
+import init, { pearson_correlation_test } from "../pkg/ci_js.js";
+import { beforeAll, describe, test, expect } from "vitest";
+
+const wasm = await import("../pkg/ci_js.js");
+
+let precision = 1e-9;
+let global_p = 0.05;
+
+beforeAll(async () => {
+  await wasm.default.init();
+});
+
+const toFloat64 = (...vals) => new Float64Array(vals);
+
+describe("pearson_correlation_test", () => {
+  test("independent data is not rejected", () => {
+    const x = toFloat64(1, 1, 2, 2, 1, 1, 2, 2);
+    const y = toFloat64(1, 2, 1, 2, 1, 2, 1, 2);
+    const z = new Float64Array(0);
+
+    const [p_value, coefficient] = pearson_correlation_test(
+      z,
+      0,
+      0,
+      x,
+      y,
+      false,
+      global_p,
+    );
+
+    expect(Math.abs(coefficient)).toBeLessThan(precision);
+    expect(p_value).toBeGreaterThanOrEqual(0.99);
+  });
+
+  test("dependent data is rejected", () => {
+    const x = toFloat64(1, 1, 1, 1, 2, 2, 2, 2);
+    const y = toFloat64(1, 1, 1, 1, 2, 2, 2, 2);
+    const z = new Float64Array(0);
+
+    const [p_value, coefficient] = pearson_correlation_test(
+      z,
+      0,
+      0,
+      x,
+      y,
+      false,
+      global_p,
+    );
+
+    expect(Math.abs(coefficient - 1.0)).toBeLessThan(precision);
+    expect(p_value).toBeLessThan(global_p);
+  });
+
+  test("negatively correlated data is rejected", () => {
+    const x = toFloat64(1, 1, 1, 1, 2, 2, 2, 2);
+    const y = toFloat64(2, 2, 2, 2, 1, 1, 1, 1);
+    const z = new Float64Array(0);
+
+    const [p_value, coefficient] = pearson_correlation_test(
+      z,
+      0,
+      0,
+      x,
+      y,
+      false,
+      global_p,
+    );
+
+    expect(Math.abs(coefficient + 1.0)).toBeLessThan(precision);
+    expect(p_value).toBeLessThan(global_p);
+  });
+
+  test("boolean mode returns true for independent data", () => {
+    const x = toFloat64(1, 1, 2, 2, 1, 1, 2, 2);
+    const y = toFloat64(1, 2, 1, 2, 1, 2, 1, 2);
+    const z = new Float64Array(0);
+
+    const result = pearson_correlation_test(z, 0, 0, x, y, true, global_p);
+
+    expect(result).toBe(true);
+  });
+
+  test("boolean mode returns false for dependent data", () => {
+    const x = toFloat64(1, 1, 1, 1, 2, 2, 2, 2);
+    const y = toFloat64(1, 1, 1, 1, 2, 2, 2, 2);
+    const z = new Float64Array(0);
+
+    const result = pearson_correlation_test(z, 0, 0, x, y, true, global_p);
+
+    expect(result).toBe(false);
+  });
+
+  test("conditional boolean accepts conditionally independent data", () => {
+    const x = toFloat64(1, 1, 2, 2, 1, 1, 2, 2);
+    const y = toFloat64(1, 2, 1, 2, 1, 2, 1, 2);
+    const z = new Float64Array([0, 0, 0, 0, 1, 1, 1, 1]);
+
+    const result = pearson_correlation_test(z, 8, 1, x, y, true, global_p);
+
+    expect(result).toBe(true);
+  });
+});

@@ -1,0 +1,104 @@
+name: Python CI
+
+on:
+  push:
+    branches: [master, development]
+    paths:
+      - 'crates/ci-python/**'
+      - 'crates/ci-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/python.yml'
+  pull_request:
+    paths:
+      - 'crates/ci-python/**'
+      - 'crates/ci-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/python.yml'
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  python-lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check formatting
+        working-directory: crates/ci-python
+        run: ruff format --check .
+
+      - name: Lint
+        working-directory: crates/ci-python
+        run: ruff check .
+
+  python-stubs:
+    name: Python Stubs Up-to-date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Regenerate stubs
+        run: cargo run --release --bin stub_gen
+
+      - name: Check for diff
+        run: git diff --exit-code -- crates/ci-python/
+
+  python-test:
+    name: Python Tests
+    needs: [python-lint]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Python dependencies
+        run: pip install maturin pytest numpy mypy
+
+      - name: Build and install extension
+        working-directory: crates/ci-python
+        run: pip install -e . --no-build-isolation
+
+      - name: Type check
+        working-directory: crates/ci-python
+        run: mypy test/
+
+      - name: Run tests
+        working-directory: crates/ci-python
+        shell: bash
+        run: pytest || [ "$?" -eq 5 ]

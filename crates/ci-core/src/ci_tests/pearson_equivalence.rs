@@ -1,9 +1,21 @@
 use crate::ci_tests::PearsonCorrelation;
 use crate::strategy::{CITest, CITestDataType, TestResult};
+use crate::utils::EPS;
+
+const FISHER_Z_DOF_OFFSET: usize = 3;
 use anyhow::bail;
 use ndarray::{Array1, Array2, Axis};
 use statrs::distribution::{ContinuousCDF, Normal};
 
+/// Pearson equivalence (TOST) conditional independence test.
+///
+/// Uses the Two One-Sided Tests (TOST) framework with Fisher's z-transformation
+/// to test whether the partial correlation is small enough to declare independence.
+///
+/// **Note**: the p-value convention is inverted relative to the other tests. A *low*
+/// p-value (below `significance_level`) means the correlation is within `delta_threshold`
+/// of zero and the null of dependence is rejected — i.e. the variables are declared
+/// independent.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PearsonEquivalence {
     pub boolean: bool,
@@ -43,9 +55,9 @@ impl CITest for PearsonEquivalence {
             Err(e) => return Err(e),
         };
         let rho = if statistic <= -1.0 {
-            -1.0 + 1e-12
+            -1.0 + EPS
         } else if statistic >= 1.0 {
-            1.0 - 1e-12
+            1.0 - EPS
         } else {
             statistic
         };
@@ -57,18 +69,20 @@ impl CITest for PearsonEquivalence {
             clippy::cast_precision_loss,
             reason = "array length and number of variables most likely won't exceed 2^53"
         )]
-        let argument = (n - s - 3) as f64;
+        let argument = (n - s - FISHER_Z_DOF_OFFSET) as f64;
         let std_error_factor = if argument >= 0.0 {
             argument.sqrt()
         } else {
             bail!("The length of the data should be at least 3 greater than the number of conditional variables");
         };
 
-        let z_score_lower = std_error_factor * (coefficient + z_delta);
-        let p_value_lower = 1.0 - Normal::new(0.0, 1.0).unwrap().cdf(z_score_lower);
+        let normal = Normal::new(0.0, 1.0).unwrap();
 
+        let z_score_lower = std_error_factor * (coefficient + z_delta);
         let z_score_upper = std_error_factor * (coefficient - z_delta);
-        let p_value_upper = Normal::new(0.0, 1.0).unwrap().cdf(z_score_upper);
+
+        let p_value_lower = 1.0 - normal.cdf(z_score_lower);
+        let p_value_upper = normal.cdf(z_score_upper);
 
         let p_value = if p_value_lower > p_value_upper {
             p_value_lower
@@ -111,6 +125,9 @@ mod tests {
     use rand_distr::{Distribution, Normal};
 
     const SIGNIFICANCE_LEVEL: f64 = 0.05;
+    const DELTA_THRESHOLD: f64 = 0.1;
+    // Specific tests imported from pgmpy fail with default epsilon
+    const PGMPY_EPS: f64 = 1e-8;
 
     const N: usize = 1000;
 
@@ -123,7 +140,7 @@ mod tests {
         let test = PearsonEquivalence {
             boolean: false,
             significance_level: 0.05,
-            delta_threshold: 0.1,
+            delta_threshold: DELTA_THRESHOLD,
         };
         let result = test.run_test(x_vals, y_vals, empty_z);
 
@@ -133,8 +150,8 @@ mod tests {
         };
 
         // values taken from pgmpy
-        assert!((p_value - 0.910_412_594_569_001_1).abs() < 1e-8);
-        assert!((statistic - 1.443_635_475_178_810_7).abs() < 1e-8);
+        assert!((p_value - 0.910_412_594_569_001_1).abs() < PGMPY_EPS);
+        assert!((statistic - 1.443_635_475_178_810_7).abs() < PGMPY_EPS);
     }
 
     fn seeded_rng() -> SmallRng {
@@ -154,7 +171,7 @@ mod tests {
         PearsonEquivalence {
             boolean: false,
             significance_level: 0.05,
-            delta_threshold: 0.1,
+            delta_threshold: DELTA_THRESHOLD,
         }
     }
 
@@ -162,14 +179,10 @@ mod tests {
         PearsonEquivalence {
             boolean: true,
             significance_level: 0.05,
-            delta_threshold: 0.1,
+            delta_threshold: DELTA_THRESHOLD,
         }
     }
 
-    // --- 1. Empty array + independent X, Y + boolean=false ---
-    // X and Y are independently generated, no conditioning variables.
-    // Expected: low p_value (<= 0.05), low |coefficient| (< 0.1)
-    // Note: p_value is opposite to other tests
     #[test]
     fn unconditional_independent_data_is_not_rejected() {
         let mut rng = seeded_rng();
@@ -184,7 +197,7 @@ mod tests {
                     "p_value {p_value} should be <= 0.05 for independent data"
                 );
                 assert!(
-                    coefficient.abs() < 0.1,
+                    coefficient.abs() < DELTA_THRESHOLD,
                     "coefficient {coefficient} should be near 0 for independent data"
                 );
             }
@@ -192,8 +205,6 @@ mod tests {
         }
     }
 
-    // --- 2. Empty array + independent X, Y + boolean=true ---
-    // Expected: true (variables are independent)
     #[test]
     fn unconditional_boolean_accepts_independent() {
         let mut rng = seeded_rng();
@@ -209,9 +220,6 @@ mod tests {
         }
     }
 
-    // --- 3. Empty array + correlated X, Y + boolean=false ---
-    // Y = 3*X + small noise, so they are strongly correlated.
-    // Expected: high p_value (>= 0.05), high |coefficient| (> 0.9)
     #[test]
     fn unconditional_dependent_data_is_rejected() {
         let mut rng = seeded_rng();
@@ -235,8 +243,6 @@ mod tests {
         }
     }
 
-    // --- 4. Empty array + correlated X, Y + boolean=true ---
-    // Expected: false (variables are NOT independent)
     #[test]
     fn unconditional_boolean_rejects_dependent() {
         let mut rng = seeded_rng();
@@ -253,10 +259,7 @@ mod tests {
         }
     }
 
-    // --- 5. Non-empty array + conditionally independent + boolean=false ---
-    // Z is a confounder: X = 3*Z + noise, Y = 2*Z + noise.
-    // After conditioning on Z, residuals should be independent.
-    // Expected: low p_value (< 0.05), low |coefficient| (< 0.1)
+    // Z is a confounder: X = 3*Z + noise, Y = 2*Z + noise. After conditioning, residuals are independent.
     #[test]
     fn conditional_independent_data_is_not_rejected() {
         let mut rng = seeded_rng();
@@ -275,7 +278,7 @@ mod tests {
                     "p_value {p_value} should be <= 0.05 after conditioning"
                 );
                 assert!(
-                    coefficient.abs() < 0.1,
+                    coefficient.abs() < DELTA_THRESHOLD,
                     "coefficient {coefficient} should be near 0 after conditioning"
                 );
             }
@@ -283,8 +286,6 @@ mod tests {
         }
     }
 
-    // --- 6. Non-empty array + conditionally independent + boolean=true ---
-    // Expected: true (conditionally independent given Z)
     #[test]
     fn conditional_boolean_accepts_independent() {
         let mut rng = seeded_rng();
@@ -307,10 +308,7 @@ mod tests {
         }
     }
 
-    // --- 7. Non-empty array + conditionally dependent (v-structure) + boolean=false ---
-    // X and Y are independent, but Z = 2*X + 2*Y + noise (collider).
-    // Conditioning on Z makes X and Y dependent.
-    // Expected: high p_value (>= 0.05), high |coefficient|
+    // Z = 2*X + 2*Y + noise is a collider; conditioning on it induces dependence between X and Y.
     #[test]
     fn conditional_dependent_data_is_rejected() {
         let mut rng = seeded_rng();
@@ -336,8 +334,6 @@ mod tests {
         }
     }
 
-    // --- 8. Non-empty array + conditionally dependent (v-structure) + boolean=true ---
-    // Expected: false (NOT independent after conditioning on collider)
     #[test]
     fn conditional_boolean_rejects_dependent() {
         let mut rng = seeded_rng();
@@ -359,10 +355,6 @@ mod tests {
         }
     }
 
-    // --- 9. Multiple conditioning variables + conditionally independent + boolean=false ---
-    // Z1, Z2, Z3 are confounders: X and Y both depend on them.
-    // After conditioning on all three, residuals should be independent.
-    // Expected: low p_value, low |coefficient|
     #[test]
     fn conditional_multiple_vars_independent_is_not_rejected() {
         let mut rng = seeded_rng();
@@ -384,7 +376,7 @@ mod tests {
                     "p_value {p_value} should be < 0.05 after conditioning on all confounders"
                 );
                 assert!(
-                    coefficient.abs() <= 0.1,
+                    coefficient.abs() <= DELTA_THRESHOLD,
                     "coefficient {coefficient} should be near 0 after conditioning on all confounders"
                 );
             }

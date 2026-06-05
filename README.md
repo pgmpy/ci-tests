@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/GiPHouse/Conditional-Independence-Testing/ci.yml?branch=main&logo=github&label=CI)](https://github.com/GiPHouse/Conditional-Independence-Testing/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/GiPHouse/Conditional-Independence-Testing/blob/main/LICENSE)
 
-A fast, multi-language library for statistical conditional independence testing. The Rust core implements several well-known tests from the power-divergence family (for discrete data) and Pearson-correlation-based tests (for continuous data), with bindings for Python and R.
+A fast, multi-language library for statistical conditional independence testing. The Rust core implements several well-known tests from the power-divergence family (for discrete data) and Pearson-correlation-based tests (for continuous data), with bindings for Python, R, and JavaScript.
 
 ## Available Tests
 
@@ -29,6 +29,8 @@ ci-js        wasm-pack bindings
 ```
 
 Downstream crates depend only on `ci-core`. The bindings crates are thin wrappers that handle type conversion.
+
+Documentation can be seen at: https://giphouse.github.io/Conditional-Independence-Testing/
 
 ## Getting Started
 
@@ -83,24 +85,23 @@ maturin develop -m crates/ci-python/Cargo.toml
 
 ```python
 import numpy as np
-import ci_python
+from ci_python import ChiSquared, PearsonCorrelation
 
-registry = ci_python.PyRegistry()
-test = registry.get_test("chi_squared")
+test = ChiSquared(boolean=False, significance_level=0.05)
 
 x = np.array([0.0, 1.0, 0.0, 1.0, 0.0])
 y = np.array([1.0, 0.0, 1.0, 0.0, 1.0])
 z = np.empty((len(x), 0))  # unconditional
 
-p_value, statistic, dof = test(x, y, z)
+p_value, statistic, dof = test.run_test(x, y, z)
 print(f"p={p_value:.4f}, χ²={statistic:.4f}, df={dof}")
 ```
 
 For continuous data:
 
 ```python
-test = registry.get_test("pearson_correlation")
-p_value, coefficient = test(x, y, z)
+test = PearsonCorrelation(boolean=False, significance_level=0.05)
+p_value, coefficient = test.run_test(x, y, z)
 ```
 
 ### R
@@ -128,6 +129,45 @@ Boolean mode returns only an independence verdict:
 ```r
 result <- pearson_correlation_test(x, y, z, boolean = TRUE, significance_level = 0.05)
 cat("independent:", result$independent, "\n")
+```
+
+### JavaScript
+
+Install the JavaScript package from the repository root:
+
+```bash
+// For directly using it on the web
+wasm-pack build --target web 
+
+// For using it in NodeJs
+wasm-pack build --target nodejs
+```
+
+```js
+import init, { log_likelihood_test } from "../pkg/ci_js.js";
+const wasm = await import("../pkg/ci_js.js");
+
+beforeAll(async () => {
+  await wasm.default.init();
+});
+
+const x = toFloat64(1, 1, 2, 2, 1, 1, 2, 2);
+const y = toFloat64(1, 2, 1, 2, 1, 2, 1, 2);
+const z = new Float64Array(0);
+const z_rows = 0;
+const z_cols = 0;
+const boolean = false;
+const significance_level = 0.05;
+
+const [p_value, statistic, dof] = log_likelihood_test(
+  z, 
+  z_rows,
+  z_cols,
+  x,
+  y,
+  boolean,
+  significance_level,
+);
 ```
 
 ## Contributing

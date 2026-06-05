@@ -51,7 +51,6 @@ mod tests {
         assert!(result.iter().all(|g| g.len() == 1));
     }
 
-    //All values are in a single group
     #[test]
     fn test_single_partition() {
         let data = array![[1.0, 10.0], [1.0, 10.0], [1.0, 10.0],];
@@ -74,7 +73,6 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    //Multiple columns
     #[test]
     fn multiple_columns() {
         let data = array![
@@ -91,7 +89,6 @@ mod tests {
         assert!(result.iter().any(|g| g.len() == 2));
     }
 
-    //order should matter
     #[test]
     fn order_dependence() {
         let data = array![[1.0, 2.0], [2.0, 1.0], [2.0, 1.0], [1.0, 2.0]];
@@ -101,7 +98,6 @@ mod tests {
         assert_eq!(expected, result);
     }
 
-    // Zero-column rows: every row has the same (empty) key, so all end up in one group.
     #[test]
     fn zero_column_rows() {
         let data: Array2<f64> = Array2::zeros((3, 0));
@@ -112,7 +108,6 @@ mod tests {
         assert_eq!(group, vec![0, 1, 2]);
     }
 
-    // Single-column rows.
     #[test]
     fn single_column_rows() {
         let data = array![[1.0], [2.0], [1.0]];
@@ -123,7 +118,6 @@ mod tests {
         assert_eq!(result_set, expected);
     }
 
-    //negative values
     #[test]
     fn negative_values() {
         let data = array![

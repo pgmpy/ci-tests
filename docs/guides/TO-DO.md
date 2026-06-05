@@ -1,1 +1,0 @@
-Guide on how to add a new CI test, how to use the library in each language, etc.

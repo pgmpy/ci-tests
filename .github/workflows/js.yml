@@ -1,0 +1,89 @@
+name: JS CI
+
+on:
+  push:
+    branches: [master, development]
+    paths:
+      - "crates/ci-js/**"
+      - "crates/ci-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/js.yml"
+  pull_request:
+    paths:
+      - "crates/ci-js/**"
+      - "crates/ci-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/js.yml"
+
+concurrency:
+  group: js-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  js-lint:
+    name: JS Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: crates/ci-js/package-lock.json
+
+      - name: Install dependencies
+        working-directory: crates/ci-js
+        run: npm ci
+
+      - name: Check formatting
+        working-directory: crates/ci-js
+        run: npx prettier --check .
+
+      - name: Run ESLint
+        working-directory: crates/ci-js
+        run: npx eslint .
+
+  js-test:
+    name: JS Tests
+    needs: [js-lint]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: crates/ci-js/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM package
+        working-directory: crates/ci-js
+        run: wasm-pack build --target nodejs --out-dir pkg
+
+      - name: Install dependencies
+        working-directory: crates/ci-js
+        run: npm ci
+
+      - name: Run tests
+        working-directory: crates/ci-js
+        run: npx vitest run --passWithNoTests

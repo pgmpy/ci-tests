@@ -1,0 +1,73 @@
+[project]
+name = "ci-python"
+version = "0.1.0"
+requires-python = ">=3.10,<3.15"
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Operating System :: Unix",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+]
+
+[build-system]
+requires = ["maturin>=1.11,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "ci_python._ci_python"
+python-source = "."
+
+[tool.pyo3-stub-gen]
+generate-init-py = true
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+[tool.ruff]
+line-length = 120
+
+# Exclude generated files.
+extend-exclude = [
+    "ci_python/_ci_python",
+    "ci_python/__init__.py",
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN002",   # missing-type-args: Checks that function *args arguments have type annotations.
+    "ANN003",   # missing-type-kwargs: Checks that function **kwargs arguments have type annotations.
+    "COM812",   # missing-trailing-comma: Checks for the absence of trailing commas.
+    "E741",     # ambiguous-variable-name: Checks for the use of the characters 'l', 'O', or 'I' as variable names.
+    "EM101",    # raw-string-in-exception: Checks for the use of string literals in exception constructors.
+    "EM102",    # f-string-in-exception: Checks for the use of f-strings in exception constructors.
+    "F403",     # undefined-local-with-import-star: Checks for the use of wildcard imports.
+    "FBT001",   # boolean-type-hint-positional-argument: Checks for the use of boolean positional arguments in function definitions, as determined by the presence of a type hint containing bool as an evident subtype - e.g. bool, bool | int, typing.Optional[bool], etc.
+    "FBT002",   # boolean-default-value-positional-argument: Checks for the use of boolean positional arguments in function definitions, as determined by the presence of a boolean default value.
+    "FBT003",   # boolean-positional-value-in-call: Checks for boolean positional arguments in function calls.
+    "N812",     # lowercase-imported-as-non-lowercase: Checks for lowercase imports that are aliased to non-lowercase names.
+    "PLR0913",  # too-many-arguments: Checks for function definitions that include too many arguments.
+    "PLR1714",  # repeated-equality-comparison: Checks for repeated equality comparisons that can be rewritten using the in operator.
+    "PLR2004",  # magic-value-comparison: Checks for the use of unnamed numerical constants ("magic") values in comparisons.
+    "S101",     # assert: Checks for uses of the assert keyword.
+    "SIM108",   # if-else-block-instead-of-if-exp: Check for if-else-blocks that can be replaced with a ternary or binary operator.
+    "TD002",    # missing-todo-author: Checks that a TODO comment includes an author.
+    "TD003",    # missing-todo-link: Checks that a TODO comment is associated with a link to a relevant issue or ticket.
+    "TRY003",   # raise-vanilla-args: Checks for long exception messages that are not defined in the exception class itself.
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"

@@ -4,7 +4,7 @@ Core Rust library implementing conditional independence tests.
 
 ## Architecture
 
-This crate uses the Strategy + Registry pattern:
+This crate uses the Strategy pattern:
 
 - **Strategy**: Each CI test implements the `CITest` trait
 - **Registry**: The `TestRegistry` maintains a map of test name → implementation

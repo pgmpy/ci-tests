@@ -9,8 +9,6 @@ pub enum TestResult {
 }
 
 /// Data types that a `CITest` can be performed on.
-///
-/// Used by `Registry`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CITestDataType {
     Continuous,

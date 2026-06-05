@@ -1,0 +1,275 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/ci-core/**"
+      - "crates/ci-js/**"
+      - "crates/ci-python/**"
+      - "crates/cir/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-rust-docs:
+    name: Build Rust Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust docs
+        run: cargo doc --no-deps -p ci_core
+
+      - name: Upload Rust docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-docs
+          path: target/doc/
+
+  build-r-docs:
+    name: Build R Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: crates/cir
+          extra-packages: any::devtools, any::rextendr, any::pkgdown
+
+      - name: Generate R wrappers
+        working-directory: crates/cir
+        run: rextendr::document()
+        shell: Rscript {0}
+
+      - name: Build pkgdown site
+        working-directory: crates/cir
+        run: pkgdown::build_site(new_process = FALSE)
+        shell: Rscript {0}
+
+      - name: Upload R docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: r-docs
+          path: crates/cir/docs/
+
+  build-js-docs:
+    name: Build JavaScript Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM package
+        working-directory: crates/ci-js
+        run: wasm-pack build --target nodejs --out-dir pkg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install TypeDoc
+        run: npm install -g typedoc typescript
+
+      - name: Build JavaScript docs
+        working-directory: crates/ci-js
+        run: typedoc --entryPoints pkg/ci_js.d.ts --skipErrorChecking --out js-docs
+
+      - name: Upload JavaScript docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-docs
+          path: crates/ci-js/js-docs/
+
+  build-python-docs:
+    name: Build Python Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        working-directory: crates/ci-python
+        run: pip install maturin numpy pdoc
+
+      - name: Build and install Python package
+        working-directory: crates/ci-python
+        run: pip install -e . --no-build-isolation
+
+      - name: Build Python docs
+        working-directory: crates/ci-python
+        run: pdoc ci_python -o python-docs
+
+      - name: Upload Python docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-docs
+          path: crates/ci-python/python-docs/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [build-rust-docs, build-r-docs, build-js-docs, build-python-docs]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download Rust docs
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-docs
+          path: site/rust/
+
+      - name: Download R docs
+        uses: actions/download-artifact@v4
+        with:
+          name: r-docs
+          path: site/r/
+
+      - name: Download JavaScript docs
+        uses: actions/download-artifact@v4
+        with:
+          name: js-docs
+          path: site/js/
+
+      - name: Download Python docs
+        uses: actions/download-artifact@v4
+        with:
+          name: python-docs
+          path: site/python/
+
+      - name: Create index page
+        run: |
+          cat > site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Conditional Independence Testing — Documentation</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: #f6f8fa;
+                color: #24292f;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem;
+              }
+              .container { max-width: 960px; width: 100%; text-align: center; }
+              h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+              .subtitle {
+                color: #57606a;
+                margin-bottom: 2.5rem;
+                font-size: 1rem;
+              }
+              .cards { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+              .card {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                background: #fff;
+                border: 1px solid #d0d7de;
+                border-radius: 8px;
+                padding: 1.25rem 1.5rem;
+                text-decoration: none;
+                color: inherit;
+                width: 220px;
+                transition: border-color 0.15s, box-shadow 0.15s;
+              }
+              .card:hover {
+                border-color: #0969da;
+                box-shadow: 0 2px 8px rgba(9,105,218,0.15);
+              }
+              .card-icon { font-size: 1.75rem; margin-bottom: 0.6rem; }
+              .card-title { font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem; }
+              .card-desc { font-size: 0.8rem; color: #57606a; }
+              footer { margin-top: 3rem; font-size: 0.75rem; color: #57606a; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Conditional Independence Testing</h1>
+              <p class="subtitle">Fast CI tests for causal discovery with Rust, R, Python, and JavaScript bindings.</p>
+              <div class="cards">
+                <a class="card" href="rust/ci_core/index.html">
+                  <span class="card-icon"></span>
+                  <span class="card-title">Rust API</span>
+                  <span class="card-desc">ci-core library docs</span>
+                </a>
+                <a class="card" href="r/index.html">
+                  <span class="card-icon"></span>
+                  <span class="card-title">R Package</span>
+                  <span class="card-desc">cir package reference</span>
+                </a>
+                <a class="card" href="python/ci_python.html">
+                  <span class="card-icon"></span>
+                  <span class="card-title">Python API</span>
+                  <span class="card-desc">ci-python module docs</span>
+                </a>
+                <a class="card" href="js/index.html">
+                  <span class="card-icon"></span>
+                  <span class="card-title">JavaScript API</span>
+                  <span class="card-desc">ci-js WASM bindings</span>
+                </a>
+              </div>
+              <footer>Generated by GitHub Actions</footer>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -5,15 +5,6 @@
 #' @useDynLib cir, .registration = TRUE
 NULL
 
-#' Returns a sorted vector of all registered CI test names.
-list_ci_tests <- function() .Call(wrap__list_ci_tests)
-
-#' Returns a sorted vector of CI test names compatible with the given data type.
-#'
-#' `data_type` must be one of `"discrete"`, `"continuous"`, or `"mixed"` (case-insensitive).
-#' Returns an error for any other value.
-list_ci_tests_for <- function(data_type) .Call(wrap__list_ci_tests_for, data_type)
-
 chi_squared_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__chi_squared_test, x_values, y_values, z, boolean, significance_level)
 
 log_likelihood_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__log_likelihood_test, x_values, y_values, z, boolean, significance_level)
@@ -26,6 +17,11 @@ freeman_tukey_test <- function(x_values, y_values, z, boolean, significance_leve
 
 modified_likelihood_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__modified_likelihood_test, x_values, y_values, z, boolean, significance_level)
 
-pearson_equivalence_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__pearson_equivalence_test, x_values, y_values, z, boolean, significance_level)
+#' Pearson equivalence CI test (TOST): declares independence when the partial correlation
+#' lies within `[-delta_threshold, delta_threshold]`.
+#'
+#' Pass a 0-column matrix for `z` to run unconditionally. When `boolean` is `true`,
+#' returns an independence verdict instead of the raw p-value and correlation.
+pearson_equivalence_test <- function(x_values, y_values, z, boolean, significance_level, delta_threshold) .Call(wrap__pearson_equivalence_test, x_values, y_values, z, boolean, significance_level, delta_threshold)
 
 # nolint end

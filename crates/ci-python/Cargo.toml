@@ -9,12 +9,20 @@ repository = ""
 
 [dependencies]
 ci_core = { path = "../ci-core" }
-pyo3 = { version = "0.28", features = ["extension-module"] }
-numpy = { version = "0.28" }
 ndarray = { workspace = true }
+numpy = { version = "0.24" }
+pyo3 = { version = "0.24", features = ["extension-module"] }
+pyo3-stub-gen = "0.9"
+pyo3-stub-gen-derive = "0.9"
 
 [lints]
 workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+name = "ci_python"
+crate-type = ["cdylib", "rlib"]
+
+[build-dependencies]
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = { version = "2.0.117", features = ["full", "visit"] }

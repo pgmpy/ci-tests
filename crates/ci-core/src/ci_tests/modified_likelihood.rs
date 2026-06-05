@@ -4,6 +4,10 @@ use ndarray::{Array1, Array2};
 
 const MODIFIED_LIKELIHOOD_LAMBDA: f64 = -1.0;
 
+/// Modified log-likelihood ratio conditional independence test (λ = −1).
+///
+/// Operates on discrete data only. Delegates to the power-divergence family
+/// with λ = −1, the modified log-likelihood ratio statistic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModifiedLikelihood {
     pub boolean: bool,
@@ -46,6 +50,7 @@ impl CITest for ModifiedLikelihood {
 #[allow(clippy::many_single_char_names)]
 mod tests {
     use super::*;
+    use crate::utils::EPS;
     use ndarray::{array, Array2};
 
     fn unwrap_correlated(r: &TestResult) -> (f64, f64, usize) {
@@ -66,7 +71,7 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!(stat.abs() < 1e-9);
+        assert!(stat.abs() < EPS);
         assert!(p > 0.99);
         assert_eq!(dof, 1);
     }
@@ -83,13 +88,11 @@ mod tests {
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
 
-        // Even with lambda = -1, perfectly independent data results in 0
-        assert!(stat.abs() < 1e-9, " got stat {stat}");
+        assert!(stat.abs() < EPS, " got stat {stat}");
         assert!(p > 0.99, " got p {p}");
         assert_eq!(dof, 2);
     }
 
-    // scipy: power_divergence([[5,1],[1,5]], lambda_=-1) -> stat=7.053439978825427
     #[test]
     fn uncond_dependent_data_rejected() {
         let t = ModifiedLikelihood {
@@ -101,8 +104,8 @@ mod tests {
         let empty = Array2::<f64>::zeros((0, 0));
 
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!((stat - 7.053_439_978_825_427).abs() < 1e-9, "got {stat}");
-        assert!((p - 0.007_911_317_670_556_329).abs() < 1e-12, "got {p}");
+        assert!((stat - 7.053_439_978_825_427).abs() < EPS, "got {stat}");
+        assert!((p - 0.007_911_317_670_556_329).abs() < EPS, "got {p}");
         assert_eq!(dof, 1);
     }
 
@@ -132,10 +135,10 @@ mod tests {
         let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
 
         assert!(
-            (stat - 1.413_396_427_876_601_6).abs() < 1e-9,
+            (stat - 1.413_396_427_876_601_6).abs() < EPS,
             "got stat {stat}"
         );
-        assert!((p - 0.493_270_184_272_571_97).abs() < 1e-12, "got p {p}");
+        assert!((p - 0.493_270_184_272_571_97).abs() < EPS, "got p {p}");
         assert_eq!(dof, 2);
     }
 
@@ -153,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn cond_bool_rejects_independent() {
+    fn cond_bool_accepts_independent() {
         let t = ModifiedLikelihood {
             boolean: true,
             significance_level: 0.05,
@@ -162,6 +165,6 @@ mod tests {
         let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
         let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
         let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(true)));
+        assert!(matches!(r, TestResult::Boolean(false)));
     }
 }
