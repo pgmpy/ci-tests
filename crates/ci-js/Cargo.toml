@@ -23,6 +23,3 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [lints]
 workspace = true
-
-[profile.release]
-opt-level = "s"
