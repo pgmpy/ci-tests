@@ -56,7 +56,7 @@ Install the package from the repository root:
 
 ```r
 # install.packages("devtools")
-devtools::install("crates/cir")
+devtools::install("crates/ci-r")
 ```
 
 ```r
@@ -146,7 +146,7 @@ continuous tests return `[p_value, coefficient]`, and boolean mode returns a `bo
 ```
 ci-core     Rust core: all test implementations and the CITest trait
 ci-python   Python bindings (PyO3)        -> import ci_python
-cir         R package (extendr)           -> library(cir)
+ci-r        R package (extendr)           -> library(cir)
 ci-js       JavaScript / WASM (wasm-pack)
 ```
 

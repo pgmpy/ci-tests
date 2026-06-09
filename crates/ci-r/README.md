@@ -34,7 +34,7 @@ pak::pak(c("devtools", "rextendr"))
 ```
 
 ```r
-setwd("crates/cir")
+setwd("crates/ci-r")
 devtools::load_all()  # compiles Rust and loads the package
 ```
 
@@ -102,7 +102,7 @@ cat("p =", result$p_value, " r =", result$coefficient, "\n")
 ## Running tests
 
 ```r
-setwd("crates/cir")
+setwd("crates/ci-r")
 devtools::test()
 ```
 

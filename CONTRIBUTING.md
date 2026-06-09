@@ -70,7 +70,7 @@ Conditional-Independence-Testing/
 ├── crates/              # Rust workspace
 │   ├── ci-core/        # Core CI test implementations
 │   ├── ci-python/      # Python bindings (PyO3)
-│   ├── cir/            # R bindings (extendr)
+│   ├── ci-r/           # R bindings (extendr)
 │   └── ci-js/          # JavaScript/WASM bindings (wasm-pack)
 ├── examples/          # Usage examples per language
 ├── scripts/           # Build and development utilities
@@ -194,7 +194,7 @@ Add test cases for each language:
 
 - **Rust**: In a `#[cfg(test)] mod tests { }` block in your implementation file
 - **Python**: In [`crates/ci-python/test`](crates/ci-python/test).
-- **R**: In `crates/cir/tests/testthat/`
+- **R**: In `crates/ci-r/tests/testthat/`
 
 Test with known inputs and expected outputs, and cover edge cases (empty data, NaN values, etc.).
 
@@ -251,7 +251,7 @@ R tests use [testthat](https://testthat.r-lib.org/) via the
 [rextendr](https://extendr.github.io/rextendr/) integration:
 
 ```r
-# From an R session in crates/cir/
+# From an R session in crates/ci-r/
 rextendr::document()  # Recompile the Rust code and regenerate wrappers
 devtools::test()      # Run all tests
 ```
@@ -266,7 +266,7 @@ lintr::lint_package()
 
 - **Unit tests**: Inline in each source file, inside `#[cfg(test)] mod tests { }`
 - **Python integration tests**: [`crates/ci-python/test`](crates/ci-python/test)
-- **R tests**: `crates/cir/tests/testthat/`
+- **R tests**: `crates/ci-r/tests/testthat/`
 
 
 ### Writing Tests

@@ -2,7 +2,7 @@
 members = [
     "crates/ci-core",
     "crates/ci-python",
-    "crates/cir/src/rust",
+    "crates/ci-r/src/rust",
     "crates/ci-js",
 ]
 resolver = "2"

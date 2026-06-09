@@ -4,14 +4,14 @@ on:
   push:
     branches: [master, development]
     paths:
-      - 'crates/cir/**'
+      - 'crates/ci-r/**'
       - 'crates/ci-core/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
   pull_request:
     paths:
-      - 'crates/cir/**'
+      - 'crates/ci-r/**'
       - 'crates/ci-core/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -42,12 +42,12 @@ jobs:
         shell: Rscript {0}
 
       - name: Check R formatting
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: styler::style_pkg(dry = "fail")
         shell: Rscript {0}
 
       - name: Lint R code
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: |
           lints <- lintr::lint_package()
           print(lints)
@@ -77,15 +77,15 @@ jobs:
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          working-directory: crates/cir
+          working-directory: crates/ci-r
           extra-packages: any::devtools, any::rextendr
 
       - name: Generate Makevars and R wrappers
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: rextendr::document()
         shell: Rscript {0}
 
       - name: Run R tests
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: devtools::test(reporter = "summary")
         shell: Rscript {0}

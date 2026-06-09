@@ -7,7 +7,7 @@ on:
       - "crates/ci-core/**"
       - "crates/ci-js/**"
       - "crates/ci-python/**"
-      - "crates/cir/**"
+      - "crates/ci-r/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -60,16 +60,16 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          working-directory: crates/cir
+          working-directory: crates/ci-r
           extra-packages: any::devtools, any::rextendr, any::pkgdown
 
       - name: Generate R wrappers
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: rextendr::document()
         shell: Rscript {0}
 
       - name: Build pkgdown site
-        working-directory: crates/cir
+        working-directory: crates/ci-r
         run: pkgdown::build_site(new_process = FALSE)
         shell: Rscript {0}
 
@@ -77,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: r-docs
-          path: crates/cir/docs/
+          path: crates/ci-r/docs/
 
   build-js-docs:
     name: Build JavaScript Docs
