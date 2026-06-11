@@ -28,4 +28,13 @@ pub enum CiError {
     /// continuous column passed to a discrete test).
     #[error("wrong column kind: {0}")]
     WrongColumnKind(String),
+
+    /// A column contained NaN / missing values at `Dataset` construction.
+    #[error("missing data: {0}")]
+    MissingData(String),
+
+    /// The (x, y, z) query itself is malformed (x == y, x/y inside z, or
+    /// duplicate entries in z).
+    #[error("invalid query: {0}")]
+    InvalidQuery(String),
 }

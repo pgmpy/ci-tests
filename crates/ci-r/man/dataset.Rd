@@ -19,6 +19,12 @@ inferred from the column classes (integer/logical/factor/character ->
 discrete, double -> continuous); discrete factor/character columns are coded
 to integer codes before reaching the Rust core.
 }
+\details{
+Missing values are \strong{rejected}: any \code{NA} (in a numeric column, a factor,
+or after coding a character column) reaches the core as NaN and errors with
+"missing data: ...". Choose a missing-data convention (e.g.
+\code{na.omit(df)}) before binding.
+}
 \examples{
 df <- data.frame(A = sample(0:1, 50, TRUE), X = rnorm(50))
 data <- dataset(df)

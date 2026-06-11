@@ -72,6 +72,11 @@
 #' discrete, double -> continuous); discrete factor/character columns are coded
 #' to integer codes before reaching the Rust core.
 #'
+#' Missing values are **rejected**: any `NA` (in a numeric column, a factor,
+#' or after coding a character column) reaches the core as NaN and errors with
+#' "missing data: ...". Choose a missing-data convention (e.g.
+#' `na.omit(df)`) before binding.
+#'
 #' @param df A data.frame (or object coercible to one).
 #' @return An object of class `cir_dataset` wrapping the bound dataset and its
 #'   column names.
@@ -207,6 +212,21 @@ modified_likelihood <- function(data, yates = TRUE) {
 pearson_correlation <- function(data) {
   ds <- .cir_as_dataset(data)
   .cir_make_test(PearsonCorrelation$new(ds$ptr), ds, "pearson_correlation")
+}
+
+#' Fisher-z continuous CI test.
+#'
+#' Applies the Fisher z-transform to the (partial) correlation:
+#' `sqrt(n - |Z| - 3) * atanh(rho)` is approximately standard normal under
+#' independence. This matches `pcalg::gaussCItest`'s statistic and is the
+#' de-facto standard continuous CI test in constraint-based causal discovery.
+#'
+#' @param data A [dataset()] result or a data.frame.
+#' @return A `cir_test` bound to `data`.
+#' @export
+fisher_z <- function(data) {
+  ds <- .cir_as_dataset(data)
+  .cir_make_test(FisherZ$new(ds$ptr), ds, "fisher_z")
 }
 
 #' Pearson equivalence (TOST) continuous CI test.

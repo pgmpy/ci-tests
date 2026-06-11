@@ -7,24 +7,24 @@
 //! - The five discrete power-divergence tests (`chi_squared`, `log_likelihood`,
 //!   `cressie_read`, `freeman_tukey`, `modified_likelihood`) are run with the
 //!   case's own `params.yates`, so both Yates-on and Yates-off rows are covered.
-//! - All `pearson_correlation` and `pearson_equivalence` rows.
+//! - All `pearson_correlation`, `pearson_equivalence`, and `fisher_z` rows.
 //!
 //! Every non-null `statistic`/`p_value`/`dof`/`effect_size` field is asserted to
 //! within `1e-7`, with the `+∞` statistic / `p = 0` degenerate case handled
-//! exactly. The test asserts it exercised all 73 fixture cases.
+//! exactly. The test asserts it exercised all 80 fixture cases.
 
 use std::collections::BTreeMap;
 
 use ci_core::ci_tests::{
-    ChiSquared, CressieRead, FreemanTukey, LogLikelihood, ModifiedLikelihood, PearsonCorrelation,
-    PearsonEquivalence,
+    ChiSquared, CressieRead, FisherZ, FreemanTukey, LogLikelihood, ModifiedLikelihood,
+    PearsonCorrelation, PearsonEquivalence,
 };
 use ci_core::dataset::{ColumnKind, Dataset};
 use ci_core::strategy::{CITest, CiResult};
 use serde::Deserialize;
 
 const TOL: f64 = 1e-7;
-const EXPECTED_CASE_COUNT: usize = 73;
+const EXPECTED_CASE_COUNT: usize = 80;
 
 #[derive(Debug, Default, Deserialize)]
 struct Params {
@@ -61,7 +61,10 @@ struct Case {
 }
 
 fn load_cases() -> Vec<Case> {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/golden.json");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/golden.json"
+    );
     let raw = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read fixture at {path}: {e}"));
     serde_json::from_str(&raw).expect("failed to parse golden.json")
@@ -98,11 +101,21 @@ fn run_case(case: &Case) -> CiResult {
     // Construct each discrete test with the case's own Yates flag so both the
     // Yates-on and Yates-off fixture rows are exercised.
     let test: Box<dyn CITest> = match case.test.as_str() {
-        "chi_squared" => Box::new(ChiSquared { yates: case_yates(case) }),
-        "log_likelihood" => Box::new(LogLikelihood { yates: case_yates(case) }),
-        "cressie_read" => Box::new(CressieRead { yates: case_yates(case) }),
-        "freeman_tukey" => Box::new(FreemanTukey { yates: case_yates(case) }),
-        "modified_likelihood" => Box::new(ModifiedLikelihood { yates: case_yates(case) }),
+        "chi_squared" => Box::new(ChiSquared {
+            yates: case_yates(case),
+        }),
+        "log_likelihood" => Box::new(LogLikelihood {
+            yates: case_yates(case),
+        }),
+        "cressie_read" => Box::new(CressieRead {
+            yates: case_yates(case),
+        }),
+        "freeman_tukey" => Box::new(FreemanTukey {
+            yates: case_yates(case),
+        }),
+        "modified_likelihood" => Box::new(ModifiedLikelihood {
+            yates: case_yates(case),
+        }),
         "pearson_correlation" => Box::new(PearsonCorrelation::new()),
         "pearson_equivalence" => {
             let delta = case
@@ -111,6 +124,7 @@ fn run_case(case: &Case) -> CiResult {
                 .expect("equivalence case missing delta_threshold");
             Box::new(PearsonEquivalence::new(delta))
         }
+        "fisher_z" => Box::new(FisherZ::new()),
         other => panic!("run_case called for unsupported test {other}"),
     };
 
@@ -188,6 +202,7 @@ fn golden_fixture_matches() {
         "modified_likelihood",
         "pearson_correlation",
         "pearson_equivalence",
+        "fisher_z",
     ] {
         assert!(
             counts.get(test).copied().unwrap_or(0) > 0,

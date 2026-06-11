@@ -3,7 +3,9 @@
 //! Every test implements [`CITest`], operating on a shared [`Dataset`] and
 //! referring to the variables under test (`x`, `y`) and the conditioning set
 //! (`z`) by column index. Configuration lives on the test struct; the data
-//! lives on the [`Dataset`]. The default [`CITest::is_independent`] turns a
+//! lives on the [`Dataset`]. The provided [`CITest::test`] validates the query
+//! via [`validate_query`] before delegating to the required
+//! [`CITest::test_impl`]. The default [`CITest::is_independent`] turns a
 //! numeric [`CiResult`] into a boolean using the test's [`IndependenceRule`].
 
 use crate::dataset::Dataset;
@@ -66,22 +68,85 @@ pub struct TestMeta {
     pub rule: IndependenceRule,
 }
 
+/// Validate a `(x, y, z)` query against `data` before running a test.
+///
+/// Checks, in order: all column indices are in range
+/// ([`CiError::UnknownColumn`]); `x != y`; `x`/`y` do not appear in `z`; `z`
+/// has no duplicates (all [`CiError::InvalidQuery`]). Called by the provided
+/// [`CITest::test`] so every test is validated uniformly.
+///
+/// # Errors
+///
+/// Returns the first violated rule as described above.
+pub fn validate_query(data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<(), CiError> {
+    let n_cols = data.n_cols();
+    let in_range = |idx: usize| {
+        if idx >= n_cols {
+            Err(CiError::UnknownColumn(format!("column index {idx}")))
+        } else {
+            Ok(())
+        }
+    };
+    in_range(x)?;
+    in_range(y)?;
+    for &zi in z {
+        in_range(zi)?;
+    }
+    if x == y {
+        return Err(CiError::InvalidQuery(format!(
+            "x and y must be different columns (both are column index {x})"
+        )));
+    }
+    for (label, idx) in [("x", x), ("y", y)] {
+        if z.contains(&idx) {
+            return Err(CiError::InvalidQuery(format!(
+                "{label} (column index {idx}) must not appear in the conditioning set z"
+            )));
+        }
+    }
+    for i in 0..z.len() {
+        if z[i + 1..].contains(&z[i]) {
+            return Err(CiError::InvalidQuery(format!(
+                "conditioning set z contains column index {} more than once",
+                z[i]
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// A conditional-independence test bound to a [`Dataset`].
 pub trait CITest: Send + Sync {
-    /// Run the test for `x ⊥ y | z`, where `x`, `y` and the entries of `z` are
-    /// column indices into `data`.
+    /// Test-specific computation for `x ⊥ y | z`. Implementations may assume
+    /// the query has already been validated by [`CITest::test`]; call sites
+    /// should use [`CITest::test`], not this method.
     ///
     /// # Errors
     ///
     /// Returns a [`CiError`] if the data is unsuitable (wrong column kind,
     /// degenerate input, dimension mismatch) or a numerical routine fails.
-    fn test(
+    fn test_impl(
         &self,
         data: &Dataset,
         x: usize,
         y: usize,
         z: &[usize],
     ) -> Result<CiResult, CiError>;
+
+    /// Run the test for `x ⊥ y | z` after validating the query
+    /// (see [`validate_query`]).
+    ///
+    /// Implementors should not override this method; implement
+    /// [`CITest::test_impl`] instead, so the uniform validation is preserved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CiError::UnknownColumn`] / [`CiError::InvalidQuery`] for a
+    /// malformed query, or any error from [`CITest::test_impl`].
+    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+        validate_query(data, x, y, z)?;
+        self.test_impl(data, x, y, z)
+    }
 
     /// Static metadata describing this test.
     fn meta(&self) -> TestMeta;
@@ -122,5 +187,67 @@ mod tests {
         assert!(IndependenceRule::PValueLt.holds(0.01, 0.05));
         assert!(!IndependenceRule::PValueLt.holds(0.05, 0.05));
         assert!(!IndependenceRule::PValueLt.holds(0.5, 0.05));
+    }
+
+    use crate::ci_tests::ChiSquared;
+    use crate::dataset::{ColumnKind, Dataset};
+
+    fn two_col_data() -> Dataset {
+        Dataset::from_columns(vec![
+            ("a".into(), ColumnKind::Discrete, vec![1., 2., 1., 2.]),
+            ("b".into(), ColumnKind::Discrete, vec![1., 1., 2., 2.]),
+            ("c".into(), ColumnKind::Discrete, vec![1., 2., 2., 1.]),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn rejects_x_equals_y() {
+        let data = two_col_data();
+        let err = ChiSquared::new().test(&data, 0, 0, &[]).unwrap_err();
+        assert!(
+            matches!(err, crate::error::CiError::InvalidQuery(_)),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn rejects_x_or_y_in_z() {
+        let data = two_col_data();
+        assert!(matches!(
+            ChiSquared::new().test(&data, 0, 1, &[0]),
+            Err(crate::error::CiError::InvalidQuery(_))
+        ));
+        assert!(matches!(
+            ChiSquared::new().test(&data, 0, 1, &[1]),
+            Err(crate::error::CiError::InvalidQuery(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_z() {
+        let data = two_col_data();
+        assert!(matches!(
+            ChiSquared::new().test(&data, 0, 1, &[2, 2]),
+            Err(crate::error::CiError::InvalidQuery(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_out_of_range_indices() {
+        let data = two_col_data();
+        assert!(matches!(
+            ChiSquared::new().test(&data, 9, 1, &[]),
+            Err(crate::error::CiError::UnknownColumn(_))
+        ));
+        assert!(matches!(
+            ChiSquared::new().test(&data, 0, 1, &[9]),
+            Err(crate::error::CiError::UnknownColumn(_))
+        ));
+        // is_independent goes through the same validation.
+        assert!(matches!(
+            ChiSquared::new().is_independent(&data, 0, 0, &[], 0.05),
+            Err(crate::error::CiError::InvalidQuery(_))
+        ));
     }
 }

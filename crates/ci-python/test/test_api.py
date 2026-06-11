@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ci_python import ChiSquared, CiError, Dataset, PearsonCorrelation, PearsonEquivalence
+from ci_python import ChiSquared, CiError, Dataset, FisherZ, PearsonCorrelation, PearsonEquivalence
 
 
 def _discrete_data() -> Dataset:
@@ -126,3 +126,143 @@ def test_test_accepts_raw_mapping() -> None:
         }
     )
     assert isinstance(chi.run_test("A", "B").p_value, float)
+
+
+def test_fisher_z_concurrent_calls_are_safe() -> None:
+    """fisher_z is exposed; concurrent run_test calls are consistent.
+
+    Exercises the GIL-free path under thread contention and asserts results
+    stay identical. (It cannot observe the GIL release itself; a wall-clock
+    speedup assertion on a microsecond-scale call would be hopelessly flaky.)
+    """
+    import threading
+
+    data = _continuous_data()
+    fz = FisherZ(data)
+    res = fz.run_test("X", "Y", ["Z"])
+    assert res.dof is None
+    assert 0.0 <= res.p_value <= 1.0
+
+    # Per-thread result lists: safe regardless of free-threaded CPython,
+    # where concurrent list.append on a shared list is not guaranteed atomic.
+    per_thread: list[list[float]] = [[] for _ in range(4)]
+
+    def worker(bucket: list[float]) -> None:
+        for _ in range(50):
+            bucket.append(fz.run_test("X", "Y", ["Z"]).p_value)
+
+    threads = [threading.Thread(target=worker, args=(b,)) for b in per_thread]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    results = [p for bucket in per_thread for p in bucket]
+    assert len(results) == 200
+    assert all(r == results[0] for r in results)
+
+
+def test_invalid_queries_raise() -> None:
+    chi = ChiSquared(_discrete_data())
+    with pytest.raises(CiError, match="invalid query"):
+        chi.run_test("A", "A")
+    with pytest.raises(CiError, match="invalid query"):
+        chi.run_test("A", "B", ["A"])
+    with pytest.raises(CiError, match="invalid query"):
+        chi.run_test("A", "B", ["C", "C"])
+
+
+def test_nan_rejected_at_dataset_construction() -> None:
+    with pytest.raises(CiError, match="missing data"):
+        Dataset({"A": ("continuous", np.array([1.0, np.nan, 2.0]))})
+    with pytest.raises(CiError, match="missing data"):
+        Dataset({"A": ("discrete", np.array([1.0, np.nan, 2.0]))})
+
+
+def test_constructor_accepts_dataframe_directly() -> None:
+    pd = pytest.importorskip("pandas")
+    rng = np.random.default_rng(3)
+    df = pd.DataFrame(
+        {
+            "A": rng.integers(0, 2, 100),
+            "B": rng.integers(0, 3, 100),
+            "X": rng.standard_normal(100),
+            "Y": rng.standard_normal(100),
+        }
+    )
+    chi = ChiSquared(df)  # implicit: DataFrame -> Dataset inside the ctor
+    via_dataset = ChiSquared(Dataset.from_pandas(df))
+    a = chi.run_test("A", "B")
+    b = via_dataset.run_test("A", "B")
+    assert a.statistic == pytest.approx(b.statistic)
+    assert a.p_value == pytest.approx(b.p_value)
+
+
+def test_dataset_accepts_string_discrete_columns() -> None:
+    data = Dataset(
+        {
+            "A": ("discrete", ["yes", "no", "yes", "no", "maybe", "yes"]),
+            "B": ("discrete", np.array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])),
+        }
+    )
+    res = ChiSquared(data).run_test("A", "B")
+    assert 0.0 <= res.p_value <= 1.0
+
+
+def test_continuous_string_values_rejected() -> None:
+    with pytest.raises(ValueError, match="numeric"):
+        Dataset({"X": ("continuous", ["a", "b", "c"])})
+
+
+def test_from_pandas_object_and_category_columns() -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(
+        {
+            "A": ["x", "y", "x", "y", "x", "y"],                  # object -> discrete
+            "B": pd.Categorical(["u", "v", "u", "v", "u", "v"]),  # category -> discrete
+            "C": [0.1, 0.4, 0.2, 0.8, 0.5, 0.9],                  # float -> continuous
+        }
+    )
+    data = Dataset.from_pandas(df)
+    assert data.n_cols == 3
+    res = ChiSquared(data).run_test("A", "B")
+    assert 0.0 <= res.p_value <= 1.0
+
+
+def test_from_pandas_missing_categorical_errors() -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame({"A": pd.Categorical(["u", None, "v"]), "B": [1.0, 2.0, 3.0]})
+    with pytest.raises(CiError, match="missing data"):
+        Dataset.from_pandas(df)
+    df2 = pd.DataFrame({"A": ["u", None, "v"], "B": [1.0, 2.0, 3.0]})
+    with pytest.raises(CiError, match="missing data"):
+        Dataset.from_pandas(df2)
+
+
+def test_from_pandas_extension_dtype_gives_friendly_error() -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame({"A": pd.array([1, 2, 3], dtype="Int64"), "B": [0.1, 0.2, 0.3]})
+    with pytest.raises(TypeError, match="cannot infer column kind"):
+        Dataset.from_pandas(df)
+
+
+def test_from_pandas_temporal_dtypes_rejected() -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame({"A": pd.to_timedelta([1, 2, 3], unit="s"), "B": [0.1, 0.2, 0.3]})
+    with pytest.raises(TypeError, match="cannot infer column kind"):
+        Dataset.from_pandas(df)
+    df2 = pd.DataFrame({"A": pd.to_datetime(["2024-01-01", "2024-01-02"]), "B": [0.1, 0.2]})
+    with pytest.raises(TypeError, match="cannot infer column kind"):
+        Dataset.from_pandas(df2)
+
+
+def test_from_pandas_string_dtype_column() -> None:
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(
+        {
+            "A": pd.array(["u", "v", "u", "w", "v", "u"], dtype="string"),
+            "B": [0, 1, 0, 1, 0, 1],
+        }
+    )
+    data = Dataset.from_pandas(df)
+    res = ChiSquared(data).run_test("A", "B")
+    assert 0.0 <= res.p_value <= 1.0

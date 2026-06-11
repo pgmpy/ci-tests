@@ -9,6 +9,12 @@
 //! name (`str`) or an integer index, resolved against the bound dataset via
 //! [`Dataset::index_of`]. Core [`ci_core::error::CiError`]s surface as the
 //! Python [`CiError`] exception; no Rust panic is allowed to escape.
+//!
+//! # Exposed tests
+//!
+//! Discrete: [`ChiSquared`], [`LogLikelihood`], [`CressieRead`],
+//! [`FreemanTukey`], [`ModifiedLikelihood`].
+//! Continuous: [`PearsonCorrelation`], [`FisherZ`], [`PearsonEquivalence`].
 
 use std::sync::Arc;
 
@@ -37,9 +43,8 @@ fn map_err(err: &CoreError) -> PyErr {
 fn resolve_column(data: &CoreDataset, obj: &Bound<'_, PyAny>) -> PyResult<usize> {
     if let Ok(name) = obj.downcast::<PyString>() {
         let name = name.to_cow()?;
-        data.index_of(&name).ok_or_else(|| {
-            PyValueError::new_err(format!("unknown column name: {name:?}"))
-        })
+        data.index_of(&name)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown column name: {name:?}")))
     } else if let Ok(idx) = obj.extract::<isize>() {
         let n_cols = data.n_cols();
         let out_of_range = || {
@@ -77,9 +82,9 @@ fn resolve_z(data: &CoreDataset, z: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<u
             "z must be a sequence of column references, not a single string",
         ));
     }
-    let seq = z.downcast::<PySequence>().map_err(|_| {
-        PyValueError::new_err("z must be a sequence of column names or indices")
-    })?;
+    let seq = z
+        .downcast::<PySequence>()
+        .map_err(|_| PyValueError::new_err("z must be a sequence of column names or indices"))?;
     let len = seq.len()?;
     let mut indices = Vec::with_capacity(len);
     for i in 0..len {
@@ -91,7 +96,7 @@ fn resolve_z(data: &CoreDataset, z: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<u
 
 /// The numeric outcome of a conditional-independence test.
 ///
-/// Mirrors [`ci_core::strategy::CiResult`]: `statistic`, `dof` and
+/// Mirrors [`ci_core::strategy::CiResult`]: `statistic`, `dof`, and
 /// `effect_size` are `None` when the test does not define them.
 #[pyclass(name = "CiResult", module = "ci_python._ci_python", frozen)]
 #[derive(Clone)]
@@ -130,13 +135,25 @@ impl PyCiResult {
 /// A named, typed, immutable table of columns shared by the test classes.
 ///
 /// Build one from a mapping `{name: (kind, values)}` where `kind` is
-/// `"discrete"` or `"continuous"` and `values` is a 1-D float64 array (or any
-/// sequence of numbers). Discrete columns are factorized into integer codes
-/// inside the core.
+/// `"discrete"` or `"continuous"` and `values` is a 1-D float64 array, a
+/// sequence of numbers, or — for discrete columns — a sequence of strings.
+/// Alternatively, pass a `pandas.DataFrame` and kinds are inferred from
+/// dtypes. Discrete columns are factorized into integer codes inside the core.
 #[pyclass(name = "Dataset", module = "ci_python._ci_python", frozen, subclass)]
 #[derive(Clone)]
 pub struct PyDataset {
     inner: Arc<CoreDataset>,
+}
+
+/// Whether `obj` is a `pandas.DataFrame`, detected structurally (type name +
+/// defining module) so pandas is never imported here.
+fn is_pandas_dataframe(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+    let cls = obj.get_type();
+    if cls.name()?.to_cow()? != "DataFrame" {
+        return Ok(false);
+    }
+    let module: String = cls.getattr("__module__")?.extract()?;
+    Ok(module.starts_with("pandas"))
 }
 
 /// Parse a kind string into a [`ColumnKind`].
@@ -150,16 +167,37 @@ fn parse_kind(kind: &str) -> PyResult<ColumnKind> {
     }
 }
 
-/// Extract column values as `Vec<f64>` from a numpy array (fast path) or any
-/// numeric sequence (fallback).
-fn extract_values(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+/// Extract column values as `Vec<f64>` from a numpy array (fast path), any
+/// numeric sequence, or — for discrete columns — a sequence of strings, which
+/// is factorized to first-seen integer codes (the core re-factorizes anyway,
+/// so codes only need to be value-distinct).
+fn extract_values(kind: ColumnKind, obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
     if let Ok(arr) = obj.extract::<PyReadonlyArray1<'_, f64>>() {
-        Ok(arr.as_slice()?.to_vec())
-    } else {
-        // Fallback: any sequence of numbers (lists, tuples, non-f64 arrays).
-        obj.try_iter()?
-            .map(|item| item?.extract::<f64>())
-            .collect()
+        return Ok(arr.as_slice()?.to_vec());
+    }
+    let items: Vec<Bound<'_, PyAny>> = obj.try_iter()?.collect::<PyResult<_>>()?;
+    let numeric: PyResult<Vec<f64>> = items.iter().map(PyAnyMethods::extract::<f64>).collect();
+    if let Ok(values) = numeric {
+        return Ok(values);
+    }
+    match kind {
+        ColumnKind::Discrete => {
+            let mut lookup: std::collections::HashMap<String, f64> =
+                std::collections::HashMap::new();
+            let mut codes = Vec::with_capacity(items.len());
+            for item in &items {
+                let key: String = item.extract().map_err(|_| {
+                    PyValueError::new_err("discrete column values must be numbers or strings")
+                })?;
+                #[allow(clippy::cast_precision_loss)]
+                let next = lookup.len() as f64;
+                codes.push(*lookup.entry(key).or_insert(next));
+            }
+            Ok(codes)
+        }
+        ColumnKind::Continuous => Err(PyValueError::new_err(
+            "continuous column values must be numeric",
+        )),
     }
 }
 
@@ -167,16 +205,17 @@ fn extract_values(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
 impl PyDataset {
     /// Build a dataset from a mapping `{name: (kind, values)}`.
     ///
-    /// `kind` is `"discrete"` or `"continuous"`; `values` is a float64 array or
-    /// numeric sequence. Insertion order of the mapping is preserved as the
-    /// column order.
+    /// `kind` is `"discrete"` or `"continuous"`; `values` is a float64 array,
+    /// a numeric sequence, or — for discrete columns — a sequence of strings
+    /// (factorized to first-seen integer codes). Insertion order of the mapping
+    /// is preserved as the column order.
     #[new]
     fn new(columns: &Bound<'_, PyDict>) -> PyResult<Self> {
         let mut cols: Vec<(String, ColumnKind, Vec<f64>)> = Vec::with_capacity(columns.len());
         for (key, value) in columns.iter() {
-            let name: String = key.extract().map_err(|_| {
-                PyValueError::new_err("Dataset column names must be strings")
-            })?;
+            let name: String = key
+                .extract()
+                .map_err(|_| PyValueError::new_err("Dataset column names must be strings"))?;
             let spec = value.downcast::<PyTuple>().map_err(|_| {
                 PyValueError::new_err(format!(
                     "column {name:?} must map to a (kind, values) tuple"
@@ -188,7 +227,7 @@ impl PyDataset {
                 )));
             }
             let kind = parse_kind(&spec.get_item(0)?.extract::<String>()?)?;
-            let values = extract_values(&spec.get_item(1)?)?;
+            let values = extract_values(kind, &spec.get_item(1)?)?;
             cols.push((name, kind, values));
         }
         let inner = CoreDataset::from_columns(cols).map_err(|e| map_err(&e))?;
@@ -226,17 +265,27 @@ impl PyDataset {
 }
 
 impl PyDataset {
-    /// Resolve a value that is *either* an existing [`PyDataset`] or a column
-    /// mapping into a shared [`CoreDataset`]. This lets every test constructor
-    /// accept `Test(data)` or `Test({...})` uniformly.
+    /// Resolve a value that is *either* an existing [`PyDataset`], a column
+    /// mapping `{name: (kind, values)}`, or a `pandas.DataFrame` into a shared
+    /// [`CoreDataset`]. This lets every test constructor accept `Test(data)`,
+    /// `Test({...})`, or `Test(df)` uniformly.
     fn coerce(obj: &Bound<'_, PyAny>) -> PyResult<Arc<CoreDataset>> {
         if let Ok(ds) = obj.extract::<PyRef<'_, PyDataset>>() {
             Ok(Arc::clone(&ds.inner))
         } else if let Ok(dict) = obj.downcast::<PyDict>() {
             Ok(PyDataset::new(dict)?.inner)
+        } else if is_pandas_dataframe(obj)? {
+            // Route through the Python-side `Dataset.from_pandas` so dtype
+            // inference lives in one place; pandas stays a soft dependency
+            // (this branch only runs when a DataFrame was passed).
+            let py = obj.py();
+            let dataset_cls = PyModule::import(py, "ci_python")?.getattr("Dataset")?;
+            let built = dataset_cls.call_method1("from_pandas", (obj,))?;
+            let ds = built.extract::<PyRef<'_, PyDataset>>()?;
+            Ok(Arc::clone(&ds.inner))
         } else {
             Err(PyValueError::new_err(
-                "expected a Dataset or a {name: (kind, values)} mapping",
+                "expected a Dataset, a {name: (kind, values)} mapping, or a pandas DataFrame",
             ))
         }
     }
@@ -303,6 +352,7 @@ macro_rules! ci_test_class {
             #[pyo3(signature = (x, y, z = None))]
             fn run_test(
                 &self,
+                py: Python<'_>,
                 x: &Bound<'_, PyAny>,
                 y: &Bound<'_, PyAny>,
                 z: Option<&Bound<'_, PyAny>>,
@@ -310,8 +360,9 @@ macro_rules! ci_test_class {
                 let xi = resolve_column(&self.data, x)?;
                 let yi = resolve_column(&self.data, y)?;
                 let zi = resolve_z(&self.data, z)?;
-                self.inner
-                    .test(&self.data, xi, yi, &zi)
+                let inner = &self.inner;
+                let data = &self.data;
+                py.allow_threads(|| inner.test(data.as_ref(), xi, yi, &zi))
                     .map(PyCiResult::from)
                     .map_err(|e| map_err(&e))
             }
@@ -320,6 +371,7 @@ macro_rules! ci_test_class {
             #[pyo3(signature = (x, y, z = None, significance_level = 0.05))]
             fn is_independent(
                 &self,
+                py: Python<'_>,
                 x: &Bound<'_, PyAny>,
                 y: &Bound<'_, PyAny>,
                 z: Option<&Bound<'_, PyAny>>,
@@ -328,9 +380,12 @@ macro_rules! ci_test_class {
                 let xi = resolve_column(&self.data, x)?;
                 let yi = resolve_column(&self.data, y)?;
                 let zi = resolve_z(&self.data, z)?;
-                self.inner
-                    .is_independent(&self.data, xi, yi, &zi, significance_level)
-                    .map_err(|e| map_err(&e))
+                let inner = &self.inner;
+                let data = &self.data;
+                py.allow_threads(|| {
+                    inner.is_independent(data.as_ref(), xi, yi, &zi, significance_level)
+                })
+                .map_err(|e| map_err(&e))
             }
 
             /// Static metadata: `{name, data_types, symmetric, rule}`.
@@ -400,6 +455,15 @@ ci_test_class!(
 );
 
 ci_test_class!(
+    "FisherZ",
+    PyFisherZ,
+    ci_core::ci_tests::FisherZ,
+    new() {
+        ci_core::ci_tests::FisherZ::new()
+    }
+);
+
+ci_test_class!(
     "PearsonEquivalence",
     PyPearsonEquivalence,
     ci_core::ci_tests::PearsonEquivalence,
@@ -421,6 +485,7 @@ fn ci_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFreemanTukey>()?;
     m.add_class::<PyModifiedLikelihood>()?;
     m.add_class::<PyPearsonCorrelation>()?;
+    m.add_class::<PyFisherZ>()?;
     m.add_class::<PyPearsonEquivalence>()?;
     Ok(())
 }

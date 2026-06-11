@@ -1,7 +1,7 @@
 # Golden parity test for the data-bound R bindings.
 #
 # Loads the shared cross-language fixture `tests/fixtures/golden.json` and, for
-# each of the seven tests, builds a `dataset()` from the case's columns,
+# each of the eight tests, builds a `dataset()` from the case's columns,
 # constructs the test with the case's parameters, runs it, and asserts that
 # `statistic` / `p_value` / `dof` match the recorded `expected` values within a
 # tight tolerance. This is the binding's numeric parity gate against the
@@ -10,7 +10,7 @@
 library(cir)
 
 TOL <- 1e-7
-EXPECTED_CASE_COUNT <- 73L
+EXPECTED_CASE_COUNT <- 80L
 
 # Map the fixture's stable test name to its binding factory function.
 TEST_FACTORIES <- list(
@@ -20,6 +20,7 @@ TEST_FACTORIES <- list(
   freeman_tukey = freeman_tukey,
   modified_likelihood = modified_likelihood,
   pearson_correlation = pearson_correlation,
+  fisher_z = fisher_z,
   pearson_equivalence = pearson_equivalence
 )
 
@@ -68,7 +69,7 @@ build_dataset <- function(columns) {
 
 construct_test <- function(name, data, params) {
   factory <- TEST_FACTORIES[[name]]
-  if (name == "pearson_correlation") {
+  if (name %in% c("pearson_correlation", "fisher_z")) {
     factory(data)
   } else if (name == "pearson_equivalence") {
     factory(data, delta_threshold = params$delta_threshold)

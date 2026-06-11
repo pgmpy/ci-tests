@@ -6,23 +6,37 @@
 //! takes the dataset (plus its own configuration) in its constructor and then
 //! answers `runTest(x, y, z)` / `isIndependent(...)` queries.
 //!
-//! ```js
-//! import { Dataset, ChiSquared, PearsonEquivalence } from "../pkg/ci_js.js";
+//! Each test constructor accepts either a [`Dataset`] instance (cheaply shared
+//! across tests without re-copying) or a raw columns object `{ name: { kind,
+//! values } }` for one-shot usage.
 //!
+//! ```js
+//! import { Dataset, ChiSquared, PearsonCorrelation, FisherZ } from "../pkg/ci_js.js";
+//!
+//! // Option A: shared Dataset (preferred when reusing across tests)
 //! const data = new Dataset({
 //!   A: { kind: "discrete",   values: [0, 1, 0, 1] },
 //!   B: { kind: "discrete",   values: [1, 0, 1, 0] },
 //! });
 //! const chi = new ChiSquared(data);            // optional config: { yates }
-//! const r = chi.runTest("A", "B", []);         // { statistic, pValue, dof, effectSize }
+//! const r   = chi.runTest("A", "B", []);       // { statistic, pValue, dof, effectSize }
 //! chi.isIndependent("A", "B", [], 0.05);       // boolean
+//!
+//! // Option B: inline raw object (one-shot; columns cross the wasm boundary once)
+//! const chi2 = new ChiSquared({
+//!   A: { kind: "discrete", values: [0, 1, 0, 1] },
+//!   B: { kind: "discrete", values: [1, 0, 1, 0] },
+//! });
+//!
+//! // FisherZ (continuous):
+//! const fz = new FisherZ(data);
+//! fz.runTest("X", "Y", ["Z"]);                 // { statistic, pValue, dof: null, effectSize }
 //! ```
 //!
-//! A [`Dataset`] is built once from a JS object `{ name: { kind, values } }`
-//! (deserialized with `serde-wasm-bindgen`), and the test classes take that
-//! `Dataset`, so the column arrays cross the JS↔wasm boundary only once even when
-//! several tests share the same data. Core [`CiError`]s and Rust panics surface
-//! as thrown JS `Error`s.
+//! Discrete column `values` may be a `number[]`, a `Float64Array`, **or** a
+//! `string[]` (first-seen string-to-code factorization). Continuous columns
+//! require numeric values. Core [`CiError`]s and Rust panics surface as thrown
+//! JS `Error`s.
 
 // This crate is a thin wasm-bindgen FFI layer: every fallible function returns
 // the same `Result<_, JsValue>` (a thrown JS `Error`) whose failure modes —
@@ -34,12 +48,21 @@ use std::rc::Rc;
 
 use ci_core::dataset::{ColumnKind, Dataset as CoreDataset};
 use ci_core::error::CiError as CoreError;
-use ci_core::strategy::{
-    CITest, CiResult as CoreResult, DataType, IndependenceRule, TestMeta,
-};
+use ci_core::strategy::{CITest, CiResult as CoreResult, DataType, IndependenceRule, TestMeta};
 use serde::Deserialize;
+use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TYPES: &'static str = r#"
+export type ColumnKind = "discrete" | "continuous";
+export interface ColumnSpec { kind: ColumnKind; values: number[] | Float64Array | string[]; }
+export type ColumnsObject = Record<string, ColumnSpec>;
+export type DataInput = Dataset | ColumnsObject;
+export interface DiscreteOptions { yates?: boolean; }
+export interface EquivalenceOptions { deltaThreshold?: number; }
+"#;
 
 /// Install the panic hook so Rust panics surface as readable JS errors. Called
 /// automatically the first time a [`Dataset`] is constructed; also exported for
@@ -63,16 +86,6 @@ fn js_error(msg: &str) -> JsValue {
 // Column / dataset deserialization
 // ---------------------------------------------------------------------------
 
-/// A single column as supplied from JS: `{ kind, values }`.
-///
-/// `values` accepts either a `number[]` or a `Float64Array` (both deserialize to
-/// `Vec<f64>` through `serde-wasm-bindgen`).
-#[derive(Deserialize)]
-struct ColumnSpec {
-    kind: String,
-    values: Vec<f64>,
-}
-
 /// Parse a kind string into a [`ColumnKind`].
 fn parse_kind(kind: &str) -> Result<ColumnKind, JsValue> {
     match kind {
@@ -82,6 +95,59 @@ fn parse_kind(kind: &str) -> Result<ColumnKind, JsValue> {
             "column kind must be \"discrete\" or \"continuous\", got {other:?}"
         ))),
     }
+}
+
+/// Read one column's `values` array: a `Float64Array`, an array of numbers, or
+/// (for discrete columns) an array of strings factorized to first-seen codes
+/// (the core re-factorizes anyway, so codes only need to be value-distinct).
+fn extract_values(name: &str, kind: ColumnKind, values: &JsValue) -> Result<Vec<f64>, JsValue> {
+    if let Some(arr) = values.dyn_ref::<js_sys::Float64Array>() {
+        return Ok(arr.to_vec());
+    }
+    let Some(arr) = values.dyn_ref::<js_sys::Array>() else {
+        return Err(js_error(&format!(
+            "column {name:?}: values must be an array or Float64Array"
+        )));
+    };
+    let len = arr.length() as usize;
+    let mut out = Vec::with_capacity(len);
+    // Decide numeric vs string mode from the first element.
+    let string_mode = len > 0 && arr.get(0).as_string().is_some();
+    if string_mode {
+        if kind != ColumnKind::Discrete {
+            return Err(js_error(&format!(
+                "column {name:?}: continuous column values must be numeric"
+            )));
+        }
+        let mut lookup: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+        for i in 0..len {
+            let Some(s) = arr
+                .get(u32::try_from(i).expect("array length fits u32"))
+                .as_string()
+            else {
+                return Err(js_error(&format!(
+                    "column {name:?}: mixed string/number values at index {i}"
+                )));
+            };
+            #[allow(clippy::cast_precision_loss)]
+            let next = lookup.len() as f64;
+            out.push(*lookup.entry(s).or_insert(next));
+        }
+    } else {
+        for i in 0..len {
+            let v = arr.get(u32::try_from(i).expect("array length fits u32"));
+            let Some(num) = v.as_f64() else {
+                let hint = if v.as_string().is_some() {
+                    "mixed string/number values"
+                } else {
+                    "values must be finite numbers (no null/undefined)"
+                };
+                return Err(js_error(&format!("column {name:?}: {hint} at index {i}")));
+            };
+            out.push(num);
+        }
+    }
+    Ok(out)
 }
 
 /// Build a core [`CoreDataset`] from a `{ name: { kind, values } }` JS object.
@@ -98,7 +164,8 @@ fn dataset_from_value(value: &JsValue) -> Result<CoreDataset, JsValue> {
     }
     let obj: &js_sys::Object = value.unchecked_ref();
     let entries = js_sys::Object::entries(obj);
-    let mut cols: Vec<(String, ColumnKind, Vec<f64>)> = Vec::with_capacity(entries.length() as usize);
+    let mut cols: Vec<(String, ColumnKind, Vec<f64>)> =
+        Vec::with_capacity(entries.length() as usize);
     for entry in entries.iter() {
         // Each `entry` is a `[name, { kind, values }]` pair.
         let pair: js_sys::Array = entry.unchecked_into();
@@ -106,13 +173,17 @@ fn dataset_from_value(value: &JsValue) -> Result<CoreDataset, JsValue> {
             .get(0)
             .as_string()
             .ok_or_else(|| js_error("column names must be strings"))?;
-        let col: ColumnSpec = serde_wasm_bindgen::from_value(pair.get(1)).map_err(|e| {
-            js_error(&format!(
-                "column {name:?} must be {{ kind, values }}: {e}"
-            ))
-        })?;
-        let kind = parse_kind(&col.kind)?;
-        cols.push((name, kind, col.values));
+        let spec = pair.get(1);
+        let kind_value = js_sys::Reflect::get(&spec, &JsValue::from_str("kind"))
+            .map_err(|_| js_error(&format!("column {name:?} must be {{ kind, values }}")))?;
+        let kind_str = kind_value
+            .as_string()
+            .ok_or_else(|| js_error(&format!("column {name:?}: kind must be a string")))?;
+        let kind = parse_kind(&kind_str)?;
+        let values_value = js_sys::Reflect::get(&spec, &JsValue::from_str("values"))
+            .map_err(|_| js_error(&format!("column {name:?} must be {{ kind, values }}")))?;
+        let values = extract_values(&name, kind, &values_value)?;
+        cols.push((name, kind, values));
     }
     CoreDataset::from_columns(cols).map_err(|e| to_js_error(&e))
 }
@@ -124,10 +195,11 @@ fn dataset_from_value(value: &JsValue) -> Result<CoreDataset, JsValue> {
 /// A named, typed, immutable table of columns shared by the test classes.
 ///
 /// Construct from a JS object `{ name: { kind, values } }` where `kind` is
-/// `"discrete"` or `"continuous"` and `values` is a `number[]` or
-/// `Float64Array`. Discrete columns are factorized into integer codes inside the
-/// core. Reuse one `Dataset` across several tests to avoid re-copying the column
-/// arrays across the wasm boundary.
+/// `"discrete"` or `"continuous"` and `values` is a `number[]`, `Float64Array`,
+/// or (for discrete columns) a `string[]` (factorized first-seen). Discrete
+/// columns are factorized into integer codes inside the core. Reuse one
+/// `Dataset` across several tests to avoid re-copying the column arrays across
+/// the wasm boundary.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct Dataset {
@@ -138,7 +210,9 @@ pub struct Dataset {
 impl Dataset {
     /// Build a dataset from a JS object `{ name: { kind, values } }`.
     #[wasm_bindgen(constructor)]
-    pub fn new(columns: &JsValue) -> Result<Dataset, JsValue> {
+    pub fn new(
+        #[wasm_bindgen(unchecked_param_type = "ColumnsObject")] columns: &JsValue,
+    ) -> Result<Dataset, JsValue> {
         console_error_panic_hook::set_once();
         Ok(Dataset {
             inner: Rc::new(dataset_from_value(columns)?),
@@ -165,6 +239,31 @@ impl Dataset {
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.inner.index_of(name)
     }
+
+    /// Internal: return a fresh handle sharing this dataset (used by the test
+    /// constructors to accept a `Dataset` without consuming the caller's
+    /// object). Stable marker for instance detection; not part of the public
+    /// API surface.
+    #[wasm_bindgen(js_name = _cloneHandle)]
+    #[must_use]
+    pub fn clone_handle(&self) -> Dataset {
+        self.clone()
+    }
+}
+
+/// Resolve a constructor `data` argument: a `Dataset` instance (detected by
+/// its `_cloneHandle` marker; we consume a *fresh clone*, never the caller's
+/// object) or a raw `{ name: { kind, values } }` columns object.
+fn coerce_dataset(value: &JsValue) -> Result<Rc<CoreDataset>, JsValue> {
+    let marker = js_sys::Reflect::get(value, &JsValue::from_str("_cloneHandle"))
+        .unwrap_or(JsValue::UNDEFINED);
+    if let Some(f) = marker.dyn_ref::<js_sys::Function>() {
+        let cloned = f.call0(value)?;
+        let ds =
+            Dataset::try_from_js_value(cloned).map_err(|_| js_error("invalid Dataset handle"))?;
+        return Ok(ds.inner);
+    }
+    Ok(Rc::new(dataset_from_value(value)?))
 }
 
 /// Resolve a single column reference (a name `string`) to a validated column
@@ -241,9 +340,10 @@ fn meta_to_js(meta: &TestMeta) -> JsValue {
 ///
 /// Each generated class stores the shared [`CoreDataset`] plus a constructed
 /// inner test, and exposes the uniform `runTest` / `isIndependent` / `meta`
-/// surface. The constructor accepts the dataset (a [`Dataset`] object or a raw
-/// columns object) and an optional config object; `$build` maps that config onto
-/// the concrete test's configuration.
+/// surface. The constructor accepts a [`Dataset`] instance *or* a raw columns
+/// object `{ name: { kind, values } }`; passing a shared `Dataset` avoids
+/// re-copying the column arrays across the wasm boundary when the same data is
+/// used by multiple tests.
 macro_rules! ci_test_class {
     (
         $js_name:literal,
@@ -251,6 +351,8 @@ macro_rules! ci_test_class {
         $core:ty,
         $config:ident,
         $cfg:ident,
+        $config_ts:literal,
+        $allowed_keys:expr,
         $build:expr
     ) => {
         #[doc = concat!("Data-bound `", $js_name, "` conditional-independence test.")]
@@ -262,14 +364,32 @@ macro_rules! ci_test_class {
 
         #[wasm_bindgen(js_class = $js_name)]
         impl $wrapper {
-            /// Construct the test bound to `data` (a `Dataset`) with an optional
-            /// `config` object. Build the dataset once with `new Dataset({...})`;
-            /// reusing it across tests avoids re-copying the columns across the
-            /// wasm boundary.
+            /// Construct the test bound to `data` (a `Dataset` instance or a raw
+            /// columns object `{ name: { kind, values } }`) with an optional
+            /// `config` object. Pass a shared `Dataset` to avoid re-copying the
+            /// column arrays across the wasm boundary when several tests share the
+            /// same data.
             #[wasm_bindgen(constructor)]
-            pub fn new(data: &Dataset, config: Option<js_sys::Object>) -> Result<$wrapper, JsValue> {
+            pub fn new(
+                #[wasm_bindgen(unchecked_param_type = "DataInput")] data: &JsValue,
+                #[wasm_bindgen(unchecked_param_type = $config_ts)] config: Option<js_sys::Object>,
+            ) -> Result<$wrapper, JsValue> {
                 console_error_panic_hook::set_once();
-                let data = Rc::clone(&data.inner);
+                let data = coerce_dataset(data)?;
+                // serde-wasm-bindgen reads only the *known* fields off a JS
+                // object, so unknown keys would be silently ignored; reject
+                // them explicitly (config typos must not pass unnoticed).
+                let allowed: &[&str] = $allowed_keys;
+                if let Some(ref obj) = config {
+                    for key in js_sys::Object::keys(obj).iter() {
+                        let key = key.as_string().unwrap_or_default();
+                        if !allowed.contains(&key.as_str()) {
+                            return Err(js_error(&format!(
+                                "invalid config object: unknown key {key:?} (allowed: {allowed:?})"
+                            )));
+                        }
+                    }
+                }
                 let $cfg: $config = match config {
                     Some(obj) => serde_wasm_bindgen::from_value(obj.into())
                         .map_err(|e| js_error(&format!("invalid config object: {e}")))?,
@@ -283,12 +403,7 @@ macro_rules! ci_test_class {
             /// `{ statistic, pValue, dof, effectSize }` (`null` for absent
             /// fields). `x`/`y` are column names; `z` is an array of names.
             #[wasm_bindgen(js_name = runTest)]
-            pub fn run_test(
-                &self,
-                x: &str,
-                y: &str,
-                z: Vec<String>,
-            ) -> Result<JsValue, JsValue> {
+            pub fn run_test(&self, x: &str, y: &str, z: Vec<String>) -> Result<JsValue, JsValue> {
                 let xi = resolve_column(&self.data, x)?;
                 let yi = resolve_column(&self.data, y)?;
                 let zi = resolve_z(&self.data, &z)?;
@@ -339,7 +454,7 @@ impl Default for DiscreteConfig {
     }
 }
 
-/// Config for [`PearsonCorrelation`]: no options.
+/// Config for [`PearsonCorrelation`] and [`FisherZ`]: no options.
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct EmptyConfig {}
@@ -353,7 +468,9 @@ struct EquivalenceConfig {
 
 impl Default for EquivalenceConfig {
     fn default() -> Self {
-        Self { delta_threshold: 0.1 }
+        Self {
+            delta_threshold: 0.1,
+        }
     }
 }
 
@@ -363,6 +480,8 @@ ci_test_class!(
     ci_core::ci_tests::ChiSquared,
     DiscreteConfig,
     cfg,
+    "DiscreteOptions | undefined",
+    &["yates"],
     ci_core::ci_tests::ChiSquared { yates: cfg.yates }
 );
 
@@ -372,6 +491,8 @@ ci_test_class!(
     ci_core::ci_tests::LogLikelihood,
     DiscreteConfig,
     cfg,
+    "DiscreteOptions | undefined",
+    &["yates"],
     ci_core::ci_tests::LogLikelihood { yates: cfg.yates }
 );
 
@@ -381,6 +502,8 @@ ci_test_class!(
     ci_core::ci_tests::CressieRead,
     DiscreteConfig,
     cfg,
+    "DiscreteOptions | undefined",
+    &["yates"],
     ci_core::ci_tests::CressieRead { yates: cfg.yates }
 );
 
@@ -390,6 +513,8 @@ ci_test_class!(
     ci_core::ci_tests::FreemanTukey,
     DiscreteConfig,
     cfg,
+    "DiscreteOptions | undefined",
+    &["yates"],
     ci_core::ci_tests::FreemanTukey { yates: cfg.yates }
 );
 
@@ -399,6 +524,8 @@ ci_test_class!(
     ci_core::ci_tests::ModifiedLikelihood,
     DiscreteConfig,
     cfg,
+    "DiscreteOptions | undefined",
+    &["yates"],
     ci_core::ci_tests::ModifiedLikelihood { yates: cfg.yates }
 );
 
@@ -408,6 +535,8 @@ ci_test_class!(
     ci_core::ci_tests::PearsonCorrelation,
     EmptyConfig,
     _cfg,
+    "Record<string, never> | undefined",
+    &[],
     ci_core::ci_tests::PearsonCorrelation::new()
 );
 
@@ -417,5 +546,20 @@ ci_test_class!(
     ci_core::ci_tests::PearsonEquivalence,
     EquivalenceConfig,
     cfg,
-    ci_core::ci_tests::PearsonEquivalence { delta_threshold: cfg.delta_threshold }
+    "EquivalenceOptions | undefined",
+    &["deltaThreshold"],
+    ci_core::ci_tests::PearsonEquivalence {
+        delta_threshold: cfg.delta_threshold
+    }
+);
+
+ci_test_class!(
+    "FisherZ",
+    FisherZ,
+    ci_core::ci_tests::FisherZ,
+    EmptyConfig,
+    _cfg,
+    "Record<string, never> | undefined",
+    &[],
+    ci_core::ci_tests::FisherZ::new()
 );

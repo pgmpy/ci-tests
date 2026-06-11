@@ -71,11 +71,8 @@ pub(crate) fn run_power_divergence(
     let DiscreteOutcome { statistic, dof } = if z.is_empty() {
         power_divergence_unconditional(x_codes, y_codes, kx, ky, lambda, yates)
     } else {
-        let z_columns = z
-            .iter()
-            .map(|&zi| data.discrete(zi))
-            .collect::<Result<Vec<_>, _>>()?;
-        power_divergence_conditional(x_codes, y_codes, kx, ky, &z_columns, lambda, yates)
+        let partition = data.strata_partition(z)?;
+        power_divergence_conditional(x_codes, y_codes, kx, ky, &partition, lambda, yates)
     };
 
     let p_value = chi_squared_sf(statistic, dof)?;

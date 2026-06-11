@@ -35,7 +35,13 @@ impl Default for ChiSquared {
 }
 
 impl CITest for ChiSquared {
-    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+    fn test_impl(
+        &self,
+        data: &Dataset,
+        x: usize,
+        y: usize,
+        z: &[usize],
+    ) -> Result<CiResult, CiError> {
         run_power_divergence(data, x, y, z, LAMBDA, self.yates)
     }
 
@@ -95,7 +101,11 @@ mod tests {
             ("y", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
         ]);
         let r = ChiSquared { yates: false }.test(&data, 0, 1, &[]).unwrap();
-        assert!((r.statistic.unwrap() - 8.0).abs() < 1e-9, "got {:?}", r.statistic);
+        assert!(
+            (r.statistic.unwrap() - 8.0).abs() < 1e-9,
+            "got {:?}",
+            r.statistic
+        );
     }
 
     #[test]

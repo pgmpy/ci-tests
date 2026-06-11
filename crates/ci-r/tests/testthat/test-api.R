@@ -152,3 +152,46 @@ test_that("as_pcalg returns a (x, y, S, suffStat) -> p.value closure", {
   # Matches the direct run_test p-value.
   expect_equal(p_uncond, run_test(pearson_correlation(data), "X", "Y")$p_value)
 })
+
+test_that("fisher_z runs and reports no dof", {
+  set.seed(11)
+  n <- 80
+  z <- rnorm(n)
+  df <- data.frame(
+    X = 1.2 * z + 0.4 * rnorm(n),
+    Y = 0.7 * z + 0.4 * rnorm(n),
+    Z = z
+  )
+  fz <- fisher_z(dataset(df))
+  res <- run_test(fz, "X", "Y", c("Z"))
+  expect_null(res$dof)
+  expect_true(res$p_value >= 0 && res$p_value <= 1)
+  # statistic = sqrt(n - |Z| - 3) * atanh(r)
+  pc <- run_test(pearson_correlation(dataset(df)), "X", "Y", c("Z"))
+  expect_equal(res$statistic, sqrt(n - 1 - 3) * atanh(pc$statistic), tolerance = 1e-9)
+})
+
+test_that("NA values error at dataset construction", {
+  df <- data.frame(A = c(1L, NA_integer_, 0L), X = c(0.1, 0.2, 0.3))
+  expect_error(dataset(df), "missing data")
+  df2 <- data.frame(A = c(0L, 1L, 0L), X = c(0.1, NA_real_, 0.3))
+  expect_error(dataset(df2), "missing data")
+  df3 <- data.frame(A = factor(c("u", NA, "v")), X = c(0.1, 0.2, 0.3))
+  expect_error(dataset(df3), "missing data")
+  # Character columns are coded via a separate branch of .cir_code_column.
+  df4 <- data.frame(A = c("u", NA, "v"), X = c(0.1, 0.2, 0.3),
+                    stringsAsFactors = FALSE)
+  expect_error(dataset(df4), "missing data")
+})
+
+test_that("invalid queries error", {
+  df <- data.frame(
+    A = sample(0:1, 40, TRUE),
+    B = sample(0:1, 40, TRUE),
+    C = sample(0:1, 40, TRUE)
+  )
+  chi <- chi_squared(dataset(df))
+  expect_error(run_test(chi, "A", "A"), "invalid query")
+  expect_error(run_test(chi, "A", "B", c("A")), "invalid query")
+  expect_error(run_test(chi, "A", "B", c("C", "C")), "invalid query")
+})

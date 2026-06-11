@@ -33,7 +33,13 @@ impl Default for FreemanTukey {
 }
 
 impl CITest for FreemanTukey {
-    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+    fn test_impl(
+        &self,
+        data: &Dataset,
+        x: usize,
+        y: usize,
+        z: &[usize],
+    ) -> Result<CiResult, CiError> {
         run_power_divergence(data, x, y, z, LAMBDA, self.yates)
     }
 

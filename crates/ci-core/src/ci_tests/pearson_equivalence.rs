@@ -2,14 +2,10 @@
 
 use statrs::distribution::{ContinuousCDF, Normal};
 
-use crate::ci_tests::pearson_correlation::partial_correlation;
+use crate::ci_tests::pearson_correlation::{partial_correlation, RHO_CLIP_EPS};
 use crate::dataset::Dataset;
 use crate::error::CiError;
 use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
-
-/// Clipping bound for `rho`: `[-1 + EPS, 1 - EPS]`. Matches the reference's
-/// `np.clip(rho, -0.999999, 0.999999)`.
-const RHO_CLIP_EPS: f64 = 1e-6;
 
 /// Two One-Sided Tests (TOST) equivalence test on the partial correlation,
 /// using Fisher's z-transform. A *low* p-value (below the significance level)
@@ -33,7 +29,7 @@ impl CITest for PearsonEquivalence {
         clippy::many_single_char_names,
         reason = "x, y, z are the contract variable names; c is the Fisher-z scale factor"
     )]
-    fn test(
+    fn test_impl(
         &self,
         data: &Dataset,
         x: usize,
@@ -59,8 +55,8 @@ impl CITest for PearsonEquivalence {
         #[allow(clippy::cast_precision_loss)]
         let c = ((n - n_z - 3) as f64).sqrt();
 
-        let normal = Normal::new(0.0, 1.0)
-            .map_err(|e| CiError::Numeric(format!("standard normal: {e}")))?;
+        let normal =
+            Normal::new(0.0, 1.0).map_err(|e| CiError::Numeric(format!("standard normal: {e}")))?;
 
         let p_lower = 1.0 - normal.cdf(c * (z_rho + z_delta));
         let p_upper = normal.cdf(c * (z_rho - z_delta));

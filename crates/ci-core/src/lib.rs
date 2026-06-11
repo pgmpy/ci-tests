@@ -15,9 +15,10 @@
 //! | Freeman-Tukey (λ = −1/2) | Discrete | [`ci_tests::FreemanTukey`] |
 //! | Modified log-likelihood (λ = −1) | Discrete | [`ci_tests::ModifiedLikelihood`] |
 //! | Pearson correlation | Continuous | [`ci_tests::PearsonCorrelation`] |
+//! | Fisher-z | Continuous | [`ci_tests::FisherZ`] |
 //! | Pearson equivalence (TOST) | Continuous | [`ci_tests::PearsonEquivalence`] |
 //!
-//! [`registry`] enumerates all seven and constructs a default-configured one by
+//! [`registry`] enumerates all eight and constructs a default-configured one by
 //! name.
 //!
 //! # Usage
@@ -43,10 +44,11 @@ pub mod ci_tests;
 pub mod dataset;
 pub mod discrete;
 pub mod error;
+pub(crate) mod gram;
 pub mod registry;
 pub mod strategy;
 
 pub use dataset::{ColumnKind, Dataset};
 pub use error::CiError;
 pub use registry::{all_metas, make_default};
-pub use strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
+pub use strategy::{validate_query, CITest, CiResult, DataType, IndependenceRule, TestMeta};

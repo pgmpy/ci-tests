@@ -34,7 +34,7 @@ maturin develop -m crates/ci-python/Cargo.toml
 
 ```python
 import numpy as np, pandas as pd
-from ci_python import Dataset, ChiSquared, PearsonEquivalence
+from ci_python import Dataset, ChiSquared, FisherZ, PearsonEquivalence
 
 rng = np.random.default_rng(0)
 df = pd.DataFrame({
@@ -44,6 +44,8 @@ df = pd.DataFrame({
 
 # Bind once; column kinds are inferred from dtypes.
 data = Dataset.from_pandas(df)
+# You can also pass the DataFrame straight to a test constructor — `ChiSquared(df)` binds it
+# implicitly (building a fresh Dataset; share one explicitly to factorize once).
 
 # Discrete chi-squared (Yates' correction on by default).
 chi = ChiSquared(data)
@@ -71,6 +73,8 @@ Install the package from the repository root (the R package is named `cir`):
 # install.packages("devtools")
 devtools::install("crates/ci-r")
 ```
+
+A `fisher_z(data)` factory accompanies the factories below, mirroring the Python/JS `FisherZ`.
 
 ```r
 library(cir)
@@ -113,11 +117,13 @@ wasm-pack build crates/ci-js --target web      # for browsers
 wasm-pack build crates/ci-js --target nodejs   # for Node.js
 ```
 
-There are no dtypes in JS, so each column carries its `kind`. Build a `Dataset` once (this
-copies the column arrays across the JS↔wasm boundary a single time) and share it across tests:
+There are no dtypes in JS, so each column carries its `kind`. You can pass columns directly
+to a constructor — `new ChiSquared(cols)` (implicit; copies once per test object) — or build
+a shared `Dataset` first — `new ChiSquared(data)` — so the arrays cross the JS↔wasm boundary
+only once and can be reused across multiple tests:
 
 ```js
-import init, { Dataset, ChiSquared, PearsonEquivalence } from "./pkg/ci_js.js";
+import init, { Dataset, ChiSquared, FisherZ, PearsonEquivalence } from "./pkg/ci_js.js";
 
 await init(); // load the WebAssembly module (web target)
 
@@ -151,6 +157,7 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
 | `freeman_tukey` | Discrete | `yates` (default `true`) | `p ≥ α` |
 | `modified_likelihood` | Discrete | `yates` (default `true`) | `p ≥ α` |
 | `pearson_correlation` | Continuous | — | `p ≥ α` |
+| `fisher_z` | Continuous | — | `p ≥ α` |
 | `pearson_equivalence` | Continuous | `delta_threshold` (default `0.1`) | `p < α` (TOST) |
 
 - **Uniform result.** Every `run_test(X, Y, Z)` returns the same `CiResult`: `statistic`,
@@ -163,8 +170,12 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
   equivalence test — so the caller never writes the rule.
 - **Conditioning.** Every test accepts a conditioning set `Z` (a list/vector of variables).
   For conditional discrete tests the statistic is summed over the strata defined by `Z`; for
-  continuous tests the partial correlation is taken on the regression residuals
-  (intercept included, `dof = n − |Z| − 2`).
+  continuous tests the partial correlation is derived from a lazily cached covariance matrix
+  (O(|Z|³) per query after the first continuous test; falls back to per-query regression for
+  datasets with more than 2048 continuous columns), with `dof = n − |Z| − 2`.
+- **Missing data.** NaN (Python/JS) and NA (R) are rejected when the dataset is bound — drop
+  or impute first. Discrete columns accept strings everywhere (factorized to integer codes
+  internally).
 - **Discrete family.** The discrete tests are members of the power-divergence family and
   differ only in the $\lambda$ parameter: `chi_squared` ($1$), `log_likelihood` ($0$),
   `cressie_read` ($2/3$), `freeman_tukey` ($-1/2$), `modified_likelihood` ($-1$). They share a

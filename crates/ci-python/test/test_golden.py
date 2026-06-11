@@ -1,7 +1,7 @@
 """Golden parity test for the data-bound Python bindings.
 
 Loads the shared cross-language fixture ``tests/fixtures/golden.json`` and, for
-each of the seven tests, builds a :class:`Dataset` from the case's columns,
+each of the eight tests, builds a :class:`Dataset` from the case's columns,
 constructs the test with the case's parameters, runs it, and asserts that
 ``statistic`` / ``p_value`` / ``dof`` match the recorded ``expected`` values.
 This is the binding's numeric parity gate against the scipy/pgmpy reference.
@@ -21,6 +21,7 @@ from ci_python import (
     ChiSquared,
     CressieRead,
     Dataset,
+    FisherZ,
     FreemanTukey,
     LogLikelihood,
     ModifiedLikelihood,
@@ -34,13 +35,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 GOLDEN_PATH = REPO_ROOT / "tests" / "fixtures" / "golden.json"
 
 TOL = 1e-7
-EXPECTED_CASE_COUNT = 73
+EXPECTED_CASE_COUNT = 80
 
 # Map the fixture's stable test name to its binding class.
 TEST_CLASSES = {
     "chi_squared": ChiSquared,
     "log_likelihood": LogLikelihood,
     "cressie_read": CressieRead,
+    "fisher_z": FisherZ,
     "freeman_tukey": FreemanTukey,
     "modified_likelihood": ModifiedLikelihood,
     "pearson_correlation": PearsonCorrelation,
@@ -63,7 +65,7 @@ def _build_dataset(columns: dict[str, dict[str, Any]]) -> Dataset:
 
 def _construct(name: str, data: Dataset, params: dict[str, Any]) -> Any:
     cls = TEST_CLASSES[name]
-    if name == "pearson_correlation":
+    if name in ("pearson_correlation", "fisher_z"):
         return cls(data)
     if name == "pearson_equivalence":
         return cls(data, delta_threshold=params["delta_threshold"])

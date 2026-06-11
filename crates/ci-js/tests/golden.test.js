@@ -1,7 +1,7 @@
 // Golden parity test for the data-bound JavaScript / WebAssembly bindings.
 //
 // Loads the shared cross-language fixture `tests/fixtures/golden.json` (at the
-// repository root) and, for each of the seven tests, builds a `Dataset` from the
+// repository root) and, for each of the eight tests, builds a `Dataset` from the
 // case's columns, constructs the test with the case's parameters, runs it, and
 // asserts that `statistic` / `pValue` / `dof` match the recorded `expected`
 // values within 1e-7. This is the binding's numeric parity gate against the
@@ -26,11 +26,12 @@ const {
   ModifiedLikelihood,
   PearsonCorrelation,
   PearsonEquivalence,
+  FisherZ,
   init,
 } = pkg;
 
 const TOL = 1e-7;
-const EXPECTED_CASE_COUNT = 73;
+const EXPECTED_CASE_COUNT = 80;
 
 // Map the fixture's stable test name to its binding class.
 const TEST_CLASSES = {
@@ -41,6 +42,7 @@ const TEST_CLASSES = {
   modified_likelihood: ModifiedLikelihood,
   pearson_correlation: PearsonCorrelation,
   pearson_equivalence: PearsonEquivalence,
+  fisher_z: FisherZ,
 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +68,7 @@ function buildDataset(columns) {
 /** Construct the test class for `name`, bound to `data`, with the case params. */
 function construct(name, data, params) {
   const cls = TEST_CLASSES[name];
-  if (name === "pearson_correlation") {
+  if (name === "pearson_correlation" || name === "fisher_z") {
     return new cls(data);
   }
   if (name === "pearson_equivalence") {

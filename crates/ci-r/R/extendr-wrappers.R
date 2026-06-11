@@ -240,6 +240,35 @@ PearsonCorrelation$is_independent <- function(x, y, z, significance_level) .Call
 #'Decide independence at `significance_level` using the test's rule.
 #'}
 #'
+FisherZ <- new.env(parent = emptyenv())
+
+FisherZ$new <- function(data) .Call(wrap__FisherZ__new, data)
+
+FisherZ$run_test <- function(x, y, z) .Call(wrap__FisherZ__run_test, self, x, y, z)
+
+FisherZ$is_independent <- function(x, y, z, significance_level) .Call(wrap__FisherZ__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.FisherZ` <- function (self, name) { func <- FisherZ[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.FisherZ` <- `$.FisherZ`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
 PearsonEquivalence <- new.env(parent = emptyenv())
 
 PearsonEquivalence$new <- function(data, delta_threshold) .Call(wrap__PearsonEquivalence__new, data, delta_threshold)

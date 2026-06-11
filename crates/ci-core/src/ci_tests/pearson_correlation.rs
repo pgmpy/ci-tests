@@ -4,6 +4,7 @@ use statrs::distribution::{ContinuousCDF, StudentsT};
 
 use crate::dataset::Dataset;
 use crate::error::CiError;
+use crate::gram::GramCache;
 use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 
 /// Relative tolerance for declaring a post-conditioning residual vector
@@ -13,6 +14,11 @@ use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 /// magnitude below the smallest genuine residual ratio in the golden fixture, so
 /// it never affects a real partial correlation.
 const VARIANCE_REL_EPS: f64 = 1e-12;
+
+/// Clipping bound for `rho` before the Fisher z-transform: `[-1 + EPS, 1 - EPS]`.
+/// Matches the reference's `np.clip(rho, -0.999999, 0.999999)`. Shared by the
+/// Fisher-z and equivalence tests.
+pub(crate) const RHO_CLIP_EPS: f64 = 1e-6;
 
 /// Pearson correlation test. With a non-empty conditioning set it computes the
 /// partial correlation by regressing X and Y on `[1, Z]` (intercept included)
@@ -86,9 +92,8 @@ fn ols_residuals(
     rows: usize,
     cols: usize,
 ) -> Result<Vec<f64>, CiError> {
-    let rank_deficient = || {
-        CiError::Numeric("rank-deficient design matrix in partial correlation".to_string())
-    };
+    let rank_deficient =
+        || CiError::Numeric("rank-deficient design matrix in partial correlation".to_string());
 
     // Work on mutable copies: `mat` is triangularized in place, `rhs` is the
     // transformed right-hand side. Row-major index: mat[i * cols + j].
@@ -173,9 +178,97 @@ fn ols_residuals(
 /// Compute the (partial) correlation `r` and its degrees of freedom for
 /// `x ⊥ y | z`.
 ///
+/// With empty `z` this is the plain Pearson r with `dof = n - 2`. With `z` it
+/// is the partial correlation given Z with `dof = n - |Z| - 2`. Dispatches to
+/// the O(|Z|³) sufficient-statistic fast path when the dataset's Gram cache is
+/// available (see [`crate::gram`]), and to the O(n·|Z|²) residual-regression
+/// path otherwise; both are algebraically identical for finite inputs (see
+/// [`crate::gram`] for the non-finite caveat). Shared by the Pearson,
+/// Fisher-z and equivalence tests.
+///
+/// # Errors
+///
+/// Returns [`CiError::DegenerateData`] on constant input / residuals or too
+/// few rows, [`CiError::WrongColumnKind`] for discrete columns, and
+/// [`CiError::Numeric`] for a rank-deficient conditioning set.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "x, y, z are the standard conditional-independence variable names from the contract"
+)]
+pub(crate) fn partial_correlation(
+    data: &Dataset,
+    x: usize,
+    y: usize,
+    z: &[usize],
+) -> Result<(f64, usize), CiError> {
+    match data.gram() {
+        Some(gram) => partial_correlation_gram(gram, data.n_rows(), x, y, z),
+        None => partial_correlation_residual(data, x, y, z),
+    }
+}
+
+/// Fast path: partial correlation from the Gram cache's Schur complements.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "x, y, z, a, b, c, r are standard CI and linear-algebra variable names"
+)]
+fn partial_correlation_gram(
+    gram: &GramCache,
+    n: usize,
+    x: usize,
+    y: usize,
+    z: &[usize],
+) -> Result<(f64, usize), CiError> {
+    let n_z = z.len();
+    if z.is_empty() {
+        if n < 3 {
+            return Err(CiError::DegenerateData(format!(
+                "need at least 3 rows for correlation, got {n}"
+            )));
+        }
+    } else if n < n_z + 3 {
+        return Err(CiError::DegenerateData(format!(
+            "need at least |Z| + 3 = {} rows, got {n}",
+            n_z + 3
+        )));
+    }
+
+    let (s_xx, s_yy, a, b, c) = gram.schur_xy_given_z(x, y, z)?;
+
+    if z.is_empty() {
+        // Mirror `pearson_r`'s constant-input error.
+        if s_xx == 0.0 || s_yy == 0.0 {
+            let which = if s_xx == 0.0 { "x" } else { "y" };
+            return Err(CiError::DegenerateData(format!(
+                "input `{which}` is constant; Pearson correlation is undefined"
+            )));
+        }
+    } else {
+        // Mirror the residual-constant check (the relative eps also catches
+        // fp-negative Schur complements and the constant-input case).
+        for (which, residual_var, original_var) in [("x", a, s_xx), ("y", b, s_yy)] {
+            if residual_var <= VARIANCE_REL_EPS * original_var {
+                return Err(CiError::DegenerateData(format!(
+                    "residual `{which}` is constant after conditioning on Z; \
+                     partial correlation is undefined"
+                )));
+            }
+        }
+    }
+
+    let r = c / (a * b).sqrt();
+    Ok((r, n - n_z - 2))
+}
+
+/// O(n·|Z|²) fallback: compute partial correlation via Householder QR residual
+/// regression on `[1, Z]`.
+///
 /// With empty `z` this is the plain Pearson r with `dof = n - 2`. With `z` it is
 /// the correlation of the residuals after regressing X and Y on `[1, Z]`, with
 /// `dof = n - |Z| - 2`. Shared with the equivalence test.
+///
+/// This is the O(n·|Z|²) fallback used when the dataset's Gram cache is
+/// unavailable; the normal entry point is [`partial_correlation`].
 ///
 /// # Errors
 ///
@@ -185,7 +278,7 @@ fn ols_residuals(
     clippy::many_single_char_names,
     reason = "x, y, z are the standard conditional-independence variable names from the contract"
 )]
-pub(crate) fn partial_correlation(
+pub(crate) fn partial_correlation_residual(
     data: &Dataset,
     x: usize,
     y: usize,
@@ -236,10 +329,7 @@ pub(crate) fn partial_correlation(
     // this relative to the *original* variable's deviation energy (the SVD path
     // truncated such residuals to exactly zero; QR leaves ~1e-15 noise). The
     // threshold sits far below any genuine residual ratio in the fixture.
-    for (residual, original, which) in [
-        (&residual_x, x_vals, "x"),
-        (&residual_y, y_vals, "y"),
-    ] {
+    for (residual, original, which) in [(&residual_x, x_vals, "x"), (&residual_y, y_vals, "y")] {
         let original_dev = sum_sq_deviations(original);
         if sum_sq_deviations(residual) <= VARIANCE_REL_EPS * original_dev {
             return Err(CiError::DegenerateData(format!(
@@ -274,7 +364,7 @@ pub(crate) fn correlation_p_value(r: f64, dof: usize) -> Result<f64, CiError> {
 }
 
 impl CITest for PearsonCorrelation {
-    fn test(
+    fn test_impl(
         &self,
         data: &Dataset,
         x: usize,
@@ -373,7 +463,9 @@ mod tests {
         let x = vec![0.5, 0.4, 0.6, 0.2, 0.9, 0.1, 0.7, 0.3, 0.8, 0.2];
         let y = vec![0.2, 0.7, 0.1, 0.8, 0.3, 0.9, 0.4, 0.6, 0.5, 0.7];
         let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
-        let r = PearsonCorrelation::new().test(&data, 0, 1, &[2, 3]).unwrap();
+        let r = PearsonCorrelation::new()
+            .test(&data, 0, 1, &[2, 3])
+            .unwrap();
         // n - |Z| - 2 = 10 - 2 - 2 = 6.
         assert_eq!(r.dof, Some(6));
     }
@@ -388,6 +480,85 @@ mod tests {
         assert!(matches!(
             PearsonCorrelation::new().test(&data, 0, 1, &[]),
             Err(CiError::WrongColumnKind(_))
+        ));
+    }
+
+    /// Deterministic pseudo-random doubles in (-1, 1) without a rand dep.
+    #[allow(
+        clippy::unreadable_literal,
+        clippy::cast_precision_loss,
+        reason = "LCG constants must be exact; precision loss is intentional for the RNG output"
+    )]
+    fn lcg_f64(seed: &mut u64, n: usize) -> Vec<f64> {
+        (0..n)
+            .map(|_| {
+                *seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                ((*seed >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
+            })
+            .collect()
+    }
+
+    #[test]
+    fn gram_fast_path_matches_residual_path() {
+        let mut seed = 0xFEED_u64;
+        let n = 120;
+        let z1 = lcg_f64(&mut seed, n);
+        let z2 = lcg_f64(&mut seed, n);
+        let noise_x = lcg_f64(&mut seed, n);
+        let noise_y = lcg_f64(&mut seed, n);
+        let x: Vec<f64> = (0..n)
+            .map(|i| 1.3 * z1[i] - 0.7 * z2[i] + 0.5 * noise_x[i])
+            .collect();
+        let y: Vec<f64> = (0..n)
+            .map(|i| -0.4 * z1[i] + 0.9 * z2[i] + 0.5 * noise_y[i])
+            .collect();
+        let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
+
+        for z in [vec![], vec![2], vec![2, 3]] {
+            let (r_fast, dof_fast) = partial_correlation(&data, 0, 1, &z).unwrap();
+            let (r_slow, dof_slow) = partial_correlation_residual(&data, 0, 1, &z).unwrap();
+            assert_eq!(dof_fast, dof_slow);
+            assert!(
+                (r_fast - r_slow).abs() < 1e-12,
+                "|Z|={}: fast {r_fast} vs slow {r_slow}",
+                z.len()
+            );
+        }
+    }
+
+    #[test]
+    fn gram_path_degenerate_errors_match() {
+        // Constant x, unconditional -> "input is constant".
+        let data = ds(vec![
+            ("x", vec![1., 1., 1., 1., 1.]),
+            ("y", vec![2., 4., 6., 8., 10.]),
+        ]);
+        assert!(matches!(
+            partial_correlation(&data, 0, 1, &[]),
+            Err(CiError::DegenerateData(_))
+        ));
+
+        // Z perfectly explains x -> "residual is constant".
+        let z = vec![1., 2., 3., 4., 5., 6., 7., 8.];
+        let x: Vec<f64> = z.iter().map(|v| 3.0 * v + 1.0).collect();
+        let y = vec![0.3, -0.1, 0.9, 0.2, -0.5, 0.7, 0.1, -0.2];
+        let data = ds(vec![("x", x), ("y", y), ("z", z)]);
+        assert!(matches!(
+            partial_correlation(&data, 0, 1, &[2]),
+            Err(CiError::DegenerateData(_))
+        ));
+
+        // Collinear Z (z2 = 2*z1) -> rank-deficient.
+        let z1 = vec![1., 2., 3., 4., 5., 6.];
+        let z2: Vec<f64> = z1.iter().map(|v| 2.0 * v).collect();
+        let x = vec![0.4, 0.1, 0.8, 0.2, 0.9, 0.3];
+        let y = vec![0.2, 0.7, 0.1, 0.8, 0.3, 0.9];
+        let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
+        assert!(matches!(
+            partial_correlation(&data, 0, 1, &[2, 3]),
+            Err(CiError::Numeric(_))
         ));
     }
 }

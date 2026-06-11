@@ -248,6 +248,12 @@ ci_test_handle!(
 );
 
 ci_test_handle!(
+    FisherZ,
+    ci_core::ci_tests::FisherZ,
+    new() { ci_core::ci_tests::FisherZ::new() }
+);
+
+ci_test_handle!(
     PearsonEquivalence,
     ci_core::ci_tests::PearsonEquivalence,
     new(delta_threshold: f64) {
@@ -264,5 +270,6 @@ extendr_module! {
     impl FreemanTukey;
     impl ModifiedLikelihood;
     impl PearsonCorrelation;
+    impl FisherZ;
     impl PearsonEquivalence;
 }
