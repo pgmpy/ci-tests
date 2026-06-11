@@ -1,11 +1,28 @@
 name: JS CI
 
+# NOTE: The build/test commands below were verified by running them locally
+# against this branch. They are NOT exercised on GitHub Actions until this
+# workflow runs there, so the exact runner setup may still need tweaks.
+#
+# Build: a *real* wasm-pack (installed via jetli/wasm-pack-action) plus the
+# wasm32-unknown-unknown target build the package into crates/ci-js/pkg, which
+# the vitest suite imports as ../pkg/ci_js.js. `wasm-opt` is disabled via the
+# crate's package metadata (crates/ci-js/Cargo.toml) because the locally
+# installed wasm-opt is too old to parse the modern wasm the core emits; it only
+# shrinks the binary, so disabling it does not affect correctness. CI may
+# re-enable it once a newer wasm-opt is guaranteed on the runner.
+#
+# Tests live in crates/ci-js/tests (their own package.json + lockfile); the
+# golden parity suite (golden.test.js) covers all 73 fixture cases (74 vitest
+# test cases: 73 parametrized + 1 coverage assertion).
+
 on:
   push:
     branches: [master, development]
     paths:
       - "crates/ci-js/**"
       - "crates/ci-core/**"
+      - "tests/fixtures/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/js.yml"
@@ -13,6 +30,7 @@ on:
     paths:
       - "crates/ci-js/**"
       - "crates/ci-core/**"
+      - "tests/fixtures/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/js.yml"
@@ -66,24 +84,32 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-          cache-dependency-path: crates/ci-js/package-lock.json
+          cache-dependency-path: crates/ci-js/tests/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
 
+      # A real wasm-pack release (not the placeholder installer script).
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
 
+      # Verified locally: builds into crates/ci-js/pkg (wasm-opt disabled via the
+      # crate's package metadata). The vitest suite imports ../pkg/ci_js.js.
       - name: Build WASM package
-        working-directory: crates/ci-js
-        run: wasm-pack build --target nodejs --out-dir pkg
+        run: wasm-pack build crates/ci-js --target nodejs
 
-      - name: Install dependencies
-        working-directory: crates/ci-js
+      # Verified locally: `npm ci && npm test` in crates/ci-js/tests runs vitest;
+      # the golden suite covers all 73 fixture cases.
+      - name: Install test dependencies
+        working-directory: crates/ci-js/tests
         run: npm ci
 
       - name: Run tests
-        working-directory: crates/ci-js
-        run: npx vitest run --passWithNoTests
+        working-directory: crates/ci-js/tests
+        run: npm test

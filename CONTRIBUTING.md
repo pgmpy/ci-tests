@@ -29,14 +29,14 @@ This document provides guidelines and instructions for contributing to the CI Te
    cd Conditional-Independence-Testing
 ```
 
-2. **Build the workspace**:
+2. **Build the core crate** (each binding has its own toolchain; see [Testing](#testing)):
 ```bash
-   cargo build --workspace
+   cargo build -p ci_core
 ```
 
 3. **Run tests to verify setup**:
 ```bash
-   cargo test --workspace
+   cargo test -p ci_core
 ```
 
 4. **Install development tools**:
@@ -55,11 +55,11 @@ Run these commands to ensure everything works:
 # Check formatting
 cargo fmt --all -- --check
 
-# Run linter
-cargo clippy --workspace --all-targets -- -D warnings
+# Run linter on the core crate
+cargo clippy -p ci_core --all-targets -- -D warnings
 
-# Run all tests
-cargo test --workspace
+# Run the core crate's tests (includes the golden parity test)
+cargo test -p ci_core
 ```
 
 If all commands complete successfully, your environment is ready!
@@ -67,14 +67,15 @@ If all commands complete successfully, your environment is ready!
 ## Repository Structure
 ```
 Conditional-Independence-Testing/
-├── crates/              # Rust workspace
-│   ├── ci-core/        # Core CI test implementations
-│   ├── ci-python/      # Python bindings (PyO3)
-│   ├── ci-r/           # R bindings (extendr)
-│   └── ci-js/          # JavaScript/WASM bindings (wasm-pack)
-├── examples/          # Usage examples per language
-├── scripts/           # Build and development utilities
-└── .github/           # CI/CD workflows
+├── crates/                 # Rust workspace
+│   ├── ci-core/           # Core CI test implementations, Dataset, CITest trait, registry
+│   ├── ci-python/         # Python bindings (PyO3 + maturin)
+│   ├── ci-r/              # R bindings (extendr); R package name is `cir`
+│   └── ci-js/             # JavaScript/WASM bindings (wasm-pack)
+├── tests/fixtures/        # Shared golden.json + generate_golden.py (cross-language parity)
+├── benchmarks/            # Value-parity and runtime benchmarks
+├── docs/                  # API examples and design docs
+└── .github/               # CI/CD workflows (one per language)
 ```
 
 See individual `README.md` files in each directory for more details.
@@ -95,7 +96,8 @@ We follow the official Rust style guide, enforced by `rustfmt`:
 We use Clippy with strict settings:
 
 - **All Clippy warnings must be fixed** before merging
-- Run `cargo clippy --workspace --all-targets -- -D warnings`
+- Run `cargo clippy -p ci_core --all-targets -- -D warnings` (and the relevant binding crate
+  for binding changes)
 - If you believe a warning is a false positive, discuss in your PR
 
 ### Code Quality
@@ -139,7 +141,11 @@ test(core): add property tests for chi-squared test
 
 ## Adding a New CI Test
 
-Follow these steps to add a new conditional independence test:
+The library is **data-bound**: a test holds only its own configuration and operates on a
+`Dataset` passed to it at query time. Adding a test means implementing the `CITest` trait in
+the core, registering it, and adding a thin wrapper in each binding. Unlike the old codegen
+path, the bindings are now hand-written (one small wrapper per language), so a new test is a
+handful of mechanical additions.
 
 ### 1. Create the Core Implementation
 
@@ -150,43 +156,63 @@ crates/ci-core/src/ci_tests/students_t.rs
 
 ### 2. Implement the `CITest` Trait
 
-Your test must implement the `CITest` trait defined in `crates/ci-core/src/strategy.rs`:
+Your test struct holds **only** its configuration and implements the `CITest` trait defined in
+`crates/ci-core/src/strategy.rs`. The trait takes a `&Dataset` plus column indices and returns
+a uniform `CiResult`; per-test config is constructor fields, the decision rule lives in
+`TestMeta`, and `is_independent` has a default impl (no per-test branching at the call site):
 
 ```rust
-use crate::strategy::{CITest, CITestDataType, TestResult};
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 
-pub struct StudentsT { /* fields */ }
+pub struct StudentsT { /* config fields only */ }
 
 impl CITest for StudentsT {
-    fn run_test(
-        &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        // ...
+    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+        // ... return CiResult { statistic, p_value, dof, effect_size }
     }
 
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Continuous]
+    fn meta(&self) -> TestMeta {
+        TestMeta {
+            name: "students_t",
+            data_types: &[DataType::Continuous],
+            symmetric: true,
+            rule: IndependenceRule::PValueGe,   // or PValueLt for an equivalence/TOST test
+        }
     }
 }
 ```
 
-See existing tests (e.g., `chi_squared.rs`) as examples.
+See existing tests (e.g., `chi_squared.rs`, or `pearson_equivalence.rs` for the inverted rule)
+as examples. Return `CiError` rather than panicking; never let a panic escape into a binding.
 
-### 3. Export from the Module
+### 3. Export and Register the Test
 
-Add your new test to `crates/ci-core/src/ci_tests/mod.rs` so it is publicly accessible:
+- Add your test to `crates/ci-core/src/ci_tests/mod.rs` so it is publicly accessible:
 
-```rust
-pub mod students_t;
-pub use students_t::StudentsT;
-```
+  ```rust
+  pub mod students_t;
+  pub use students_t::StudentsT;
+  ```
 
-### 4. Add Python Bindings
+- Register it in `crates/ci-core/src/registry.rs` (`default_tests()`), the single source of
+  truth that lets callers enumerate tests and construct one by its stable `meta().name`. Add
+  the name to the registry's test assertions too.
 
-Python bindings are automatically generated by [build.rs](crates/ci-python/build.rs). Make sure that they implement the [`CITest`](crates/ci-core/src/strategy.rs#L25) trait and are at the root of the [`::ci_core::ci_tests`](crates/ci-core/src/ci_tests) module.
+### 4. Add the Binding Wrappers
+
+Each binding has one small wrapper per test; add yours next to the existing ones:
+
+- **Python** — add a `ci_test_class!(...)` invocation in `crates/ci-python/src/lib.rs` (mapping
+  the constructor kwargs onto your config) and register the generated class in the `#[pymodule]`
+  at the bottom of that file. Re-export it from `crates/ci-python/ci_python/__init__.py` and add
+  it to the `.pyi` stub.
+- **R** — add a factory function in `crates/ci-r/R/cir.R` (following `chi_squared()` /
+  `pearson_equivalence()`), and export the extendr handle in the Rust glue
+  (`crates/ci-r/src/rust/src/lib.rs`).
+- **JavaScript** — add a `ci_test_class!(...)` invocation in `crates/ci-js/src/lib.rs` (with a
+  `serde`-derived config struct if the test takes options).
 
 ### 5. Add Tests
 
@@ -195,29 +221,53 @@ Add test cases for each language:
 - **Rust**: In a `#[cfg(test)] mod tests { }` block in your implementation file
 - **Python**: In [`crates/ci-python/test`](crates/ci-python/test).
 - **R**: In `crates/ci-r/tests/testthat/`
+- **JavaScript**: In [`crates/ci-js/tests`](crates/ci-js/tests).
 
-Test with known inputs and expected outputs, and cover edge cases (empty data, NaN values, etc.).
+Test with known inputs and expected outputs, and cover edge cases (single category,
+zero-variance, NaN, sparse strata). If your test maps to a scipy/standard reference, add rows
+for it to the shared golden fixture (see [Testing](#testing)) so every language checks it.
 
 ### 6. Update Documentation
 
 - Add doc comments to your test struct and methods
-- Add usage examples in `examples/`
+- Add the test to the "Available Tests" table in `README.md`
+- If it has a notable usage pattern, document it (e.g. in `docs/api-examples.md`)
 
 ## Testing
 
+Because each crate uses a different toolchain, there is no single workspace-wide test command;
+run each language's suite with its own tooling, as below.
+
+### Shared golden fixture (cross-language parity gate)
+
+The file `tests/fixtures/golden.json` (at the repository root) holds reference values generated
+from scipy / standard references by `tests/fixtures/generate_golden.py` — for each case: the
+test name, its params (`yates` / `delta_threshold`), the columns (with kinds), `X` / `Y` / `Z`,
+and the expected `statistic` / `p_value` / `dof` / `effect_size`. **Every** language test suite
+reads this same fixture and asserts its binding reproduces the values (within `1e-7`), so it is
+the cross-language numeric parity gate:
+
+- Rust: `crates/ci-core/tests/golden.rs`
+- Python: `crates/ci-python/test/test_golden.py`
+- R: `crates/ci-r/tests/testthat/test-golden.R`
+- JavaScript: `crates/ci-js/tests/golden.test.js`
+
+If you change a statistic or add a test, regenerate the fixture and re-run every suite:
+
+```bash
+python tests/fixtures/generate_golden.py    # requires numpy + scipy
+```
+
 ### Rust Tests
 ```bash
-# Run all Rust tests
-cargo test --workspace
-
-# Run tests for a specific crate
+# Run the core crate's tests (includes the golden parity test)
 cargo test -p ci_core
 
 # Run a specific test
-cargo test test_chi_squared
+cargo test -p ci_core test_chi_squared
 
 # Run with output (see println! statements)
-cargo test -- --nocapture
+cargo test -p ci_core -- --nocapture
 ```
 
 ### Python Tests
@@ -232,11 +282,11 @@ cd crates/ci-python
 pip install maturin
 maturin develop
 
-# Run tests
-pytest
+# Run tests (includes test_golden.py)
+pytest test/
 
 # Type-check the test suite
-mypy tests/
+mypy test/
 ```
 
 The CI pipeline also checks formatting and linting:
@@ -253,7 +303,7 @@ R tests use [testthat](https://testthat.r-lib.org/) via the
 ```r
 # From an R session in crates/ci-r/
 rextendr::document()  # Recompile the Rust code and regenerate wrappers
-devtools::test()      # Run all tests
+devtools::test()      # Run all tests (includes test-golden.R)
 ```
 
 The CI pipeline also checks style and linting:
@@ -262,11 +312,27 @@ styler::style_pkg()
 lintr::lint_package()
 ```
 
+### JavaScript Tests
+
+JavaScript tests use [vitest](https://vitest.dev/) and require the WASM package to be built
+first with [wasm-pack](https://rustwasm.github.io/wasm-pack/):
+
+```bash
+# Build the WASM package into crates/ci-js/pkg
+wasm-pack build crates/ci-js --target nodejs
+
+# From crates/ci-js/tests
+npm ci
+npm test    # vitest, includes golden.test.js
+```
+
 ### Test Organisation
 
 - **Unit tests**: Inline in each source file, inside `#[cfg(test)] mod tests { }`
+- **Golden parity tests**: one per language, all reading `tests/fixtures/golden.json`
 - **Python integration tests**: [`crates/ci-python/test`](crates/ci-python/test)
 - **R tests**: `crates/ci-r/tests/testthat/`
+- **JavaScript tests**: [`crates/ci-js/tests`](crates/ci-js/tests)
 
 
 ### Writing Tests
@@ -286,11 +352,12 @@ lintr::lint_package()
 
 2. **Make your changes** and commit with clear messages
 
-3. **Ensure all checks pass locally**:
+3. **Ensure all checks pass locally** (run the suites for the languages you touched — see
+   [Testing](#testing); for a core change):
 ```bash
    cargo fmt --all
-   cargo clippy --workspace --all-targets -- -D warnings
-   cargo test --workspace
+   cargo clippy -p ci_core --all-targets -- -D warnings
+   cargo test -p ci_core
 ```
 
 4. **Push your branch**:

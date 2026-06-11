@@ -1,167 +1,135 @@
-use crate::strategy::{CITest, CITestDataType, TestResult};
-use crate::utils::power_divergence::power_divergence;
+//! Pearson chi-squared conditional-independence test (power divergence, λ = 1).
 
-use ndarray::{Array1, Array2};
+use crate::ci_tests::discrete_common::{discrete_meta, run_power_divergence};
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, TestMeta};
 
-const CHI_SQUARED_LAMBDA: f64 = 1.0;
+/// The power-divergence parameter for the Pearson chi-squared statistic.
+const LAMBDA: f64 = 1.0;
 
-/// Pearson chi-squared conditional independence test (λ = 1).
+/// Pearson chi-squared test for discrete data (power divergence with λ = 1).
 ///
-/// Operates on discrete data only. Delegates to the power-divergence family
-/// with λ = 1, which is the classical chi-squared statistic.
-#[derive(Debug, Clone, PartialEq)]
+/// When `yates` is set, Yates' continuity correction is applied on 2×2
+/// (sub-)tables, matching `scipy.stats.chi2_contingency(correction=True)` and
+/// pgmpy. Cramér's V is reported as the effect size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChiSquared {
-    pub boolean: bool,
-    pub significance_level: f64,
+    /// Whether to apply Yates' continuity correction on 2×2 (sub-)tables.
+    pub yates: bool,
 }
 
 impl ChiSquared {
+    /// Construct the test with Yates' continuity correction enabled (the
+    /// scipy/pgmpy default).
     #[must_use]
-    pub fn new(boolean: bool, significance_level: f64) -> Self {
-        Self {
-            boolean,
-            significance_level,
-        }
+    pub fn new() -> Self {
+        Self { yates: true }
+    }
+}
+
+impl Default for ChiSquared {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl CITest for ChiSquared {
-    fn run_test(
-        &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        power_divergence(
-            &x_values,
-            &y_values,
-            &z,
-            self.boolean,
-            self.significance_level,
-            CHI_SQUARED_LAMBDA,
-        )
+    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+        run_power_divergence(data, x, y, z, LAMBDA, self.yates)
     }
 
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Discrete]
+    fn meta(&self) -> TestMeta {
+        discrete_meta("chi_squared")
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::many_single_char_names)]
 mod tests {
     use super::*;
-    use crate::utils::EPS;
-    use ndarray::{array, Array2};
+    use crate::dataset::ColumnKind;
+    use crate::strategy::{DataType, IndependenceRule};
 
-    fn unwrap_correlated(r: &TestResult) -> (f64, f64, usize) {
-        match r {
-            TestResult::Statistic(a, b, c) => (*a, *b, *c),
-            _ => panic!("expected Correlated2"),
-        }
+    fn ds(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+        Dataset::from_columns(
+            cols.into_iter()
+                .map(|(n, v)| (n.to_string(), ColumnKind::Discrete, v))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn uncond_independent_data_accepted() {
-        let t = ChiSquared {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let empty = Array2::<f64>::zeros((0, 0));
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!(stat.abs() < EPS, "stat should be ~0, got {stat}");
-        assert!(p > 0.99);
-        assert_eq!(dof, 1);
+    fn unconditional_independent() {
+        let data = ds(vec![
+            ("x", vec![1., 1., 2., 2., 1., 1., 2., 2.]),
+            ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
+        ]);
+        let r = ChiSquared::new().test(&data, 0, 1, &[]).unwrap();
+        assert!(r.statistic.unwrap().abs() < 1e-9);
+        assert_eq!(r.dof, Some(1));
+        assert!(r.p_value > 0.99);
     }
 
     #[test]
-    fn cond_independent_data_accepted() {
-        let t = ChiSquared {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(stat.abs() < EPS, "stat should be ~0, got {stat}");
-        assert!(p > 0.99);
-        assert_eq!(dof, 2);
-    }
-
-    #[test]
-    fn uncond_dependent_data_rejected() {
-        let t = ChiSquared {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let y = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let empty = Array2::<f64>::zeros((0, 0));
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!((stat - 8.0).abs() < EPS, "got {stat}");
-        assert!((p - 0.004_677_734_981_047_276).abs() < EPS, "got {p}");
-        assert_eq!(dof, 1);
-    }
-
-    #[test]
-    fn cond_dependent_data_rejected() {
-        let t = ChiSquared {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!((stat - 8.0).abs() < EPS, "stat {stat} should be larger");
+    fn unconditional_dependent_with_yates() {
+        // [[4,0],[0,4]]: Yates makes stat = 4 * (1.5^2 / 2) = 4.5.
+        let data = ds(vec![
+            ("x", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
+            ("y", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
+        ]);
+        let r = ChiSquared::new().test(&data, 0, 1, &[]).unwrap();
         assert!(
-            (p - 0.018_315_638_888_734_193).abs() < EPS,
-            "rejected p value {p}"
+            (r.statistic.unwrap() - 4.5).abs() < 1e-9,
+            "got {:?}",
+            r.statistic
         );
-        assert_eq!(dof, 2);
+        assert_eq!(r.dof, Some(1));
     }
 
     #[test]
-    fn uncond_boolean_mode() {
-        let t = ChiSquared {
-            boolean: true,
-            significance_level: 0.05,
-        };
-        let empty = Array2::<f64>::zeros((0, 0));
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let r = t.run_test(x, y, empty.clone()).unwrap();
-        assert!(matches!(r, TestResult::Boolean(true)));
-
-        let x = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let y = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let r = t.run_test(x, y, empty).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
+    fn yates_off_changes_statistic() {
+        // Same [[4,0],[0,4]] without Yates -> full chi-square = 8.
+        let data = ds(vec![
+            ("x", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
+            ("y", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
+        ]);
+        let r = ChiSquared { yates: false }.test(&data, 0, 1, &[]).unwrap();
+        assert!((r.statistic.unwrap() - 8.0).abs() < 1e-9, "got {:?}", r.statistic);
     }
 
     #[test]
-    fn cond_boolean_mode() {
-        let t = ChiSquared {
-            boolean: true,
-            significance_level: 0.05,
-        };
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(true)));
+    fn conditional_independent() {
+        let data = ds(vec![
+            ("x", vec![1., 1., 2., 2., 1., 1., 2., 2.]),
+            ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
+            ("z", vec![1., 1., 1., 1., 2., 2., 2., 2.]),
+        ]);
+        let r = ChiSquared::new().test(&data, 0, 1, &[2]).unwrap();
+        assert!(r.statistic.unwrap().abs() < 1e-9);
+        assert_eq!(r.dof, Some(2));
+        assert!(r.p_value > 0.99);
+    }
 
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
+    #[test]
+    fn wrong_column_kind_errors() {
+        let data = Dataset::from_columns(vec![
+            ("x".into(), ColumnKind::Continuous, vec![1., 2., 3.]),
+            ("y".into(), ColumnKind::Discrete, vec![1., 2., 3.]),
+        ])
+        .unwrap();
+        assert!(matches!(
+            ChiSquared::new().test(&data, 0, 1, &[]),
+            Err(CiError::WrongColumnKind(_))
+        ));
+    }
+
+    #[test]
+    fn meta_is_correct() {
+        let m = ChiSquared::new().meta();
+        assert_eq!(m.name, "chi_squared");
+        assert_eq!(m.data_types, &[DataType::Discrete]);
+        assert!(m.symmetric);
+        assert_eq!(m.rule, IndependenceRule::PValueGe);
     }
 }

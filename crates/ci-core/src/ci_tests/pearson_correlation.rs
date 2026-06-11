@@ -1,364 +1,393 @@
-use crate::{
-    strategy::{CITest, CITestDataType, TestResult},
-    utils::EPS,
-};
-use anyhow::ensure;
-use nalgebra::{DMatrix, DVector};
-use ndarray::{Array1, Array2, ArrayView1};
+//! Pearson / partial-correlation conditional-independence test (continuous).
+
 use statrs::distribution::{ContinuousCDF, StudentsT};
 
-const SVD_TOLERANCE: f64 = 1e-10;
-const MIN_SAMPLE_SIZE: usize = 3;
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 
-/// Pearson correlation conditional independence test.
-///
-/// Should be used only on continuous data. When the conditioning set is non-empty,
-/// uses linear regression to compute residuals and tests the Pearson correlation
-/// on those residuals (partial correlation).
-///
-/// # References
-///
-/// - [Pearson correlation coefficient](https://en.wikipedia.org/wiki/Pearson_correlation_coefficient)
-/// - [Partial correlation using linear regression](https://en.wikipedia.org/wiki/Partial_correlation#Using_linear_regression)
-#[derive(Debug, Clone, PartialEq)]
-pub struct PearsonCorrelation {
-    pub boolean: bool,
-    pub significance_level: f64,
-}
+/// Relative tolerance for declaring a post-conditioning residual vector
+/// "constant": its deviation energy is negligible compared to the original
+/// variable's. This catches the case where Z perfectly explains X or Y, leaving
+/// residuals that are pure floating-point noise (~1e-15). It sits ~30 orders of
+/// magnitude below the smallest genuine residual ratio in the golden fixture, so
+/// it never affects a real partial correlation.
+const VARIANCE_REL_EPS: f64 = 1e-12;
+
+/// Pearson correlation test. With a non-empty conditioning set it computes the
+/// partial correlation by regressing X and Y on `[1, Z]` (intercept included)
+/// and correlating the residuals.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PearsonCorrelation;
 
 impl PearsonCorrelation {
+    /// Construct the test (no configuration in this slice).
     #[must_use]
-    pub fn new(boolean: bool, significance_level: f64) -> Self {
-        Self {
-            boolean,
-            significance_level,
-        }
+    pub fn new() -> Self {
+        Self
     }
 }
 
-impl CITest for PearsonCorrelation {
-    fn run_test(
-        &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        if z.is_empty() {
-            let (coefficient, p_value) = pearsonr(&x_values.view(), &y_values.view())?;
-            Ok(wrap_result(
-                self.boolean,
-                p_value,
-                coefficient,
-                self.significance_level,
-            ))
-        } else {
-            let z_na = DMatrix::from_row_iterator(z.nrows(), z.ncols(), z.iter().copied());
-            let x_na = DVector::from_iterator(x_values.len(), x_values.iter().copied());
-            let y_na = DVector::from_iterator(y_values.len(), y_values.iter().copied());
-
-            let svd = z_na.svd(true, true);
-            let x_coefficient = svd
-                .solve(&x_na, SVD_TOLERANCE)
-                .map_err(|e| anyhow::anyhow!("least squares failed for x: {e}"))?;
-            let y_coefficient = svd
-                .solve(&y_na, SVD_TOLERANCE)
-                .map_err(|e| anyhow::anyhow!("least squares failed for y: {e}"))?;
-
-            let x_coef_nd = Array1::from_vec(x_coefficient.iter().copied().collect());
-            let y_coef_nd = Array1::from_vec(y_coefficient.iter().copied().collect());
-
-            let residual_x = x_values - z.dot(&x_coef_nd);
-            let residual_y = y_values - z.dot(&y_coef_nd);
-
-            let (coefficient, p_value) = pearsonr(&residual_x.view(), &residual_y.view())?;
-            Ok(wrap_result(
-                self.boolean,
-                p_value,
-                coefficient,
-                self.significance_level,
-            ))
-        }
-    }
-
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Continuous]
-    }
+/// Sum of squared deviations from the mean, `Σ (v − v̄)²`.
+fn sum_sq_deviations(v: &[f64]) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    let mean = v.iter().sum::<f64>() / v.len() as f64;
+    v.iter().map(|&vi| (vi - mean) * (vi - mean)).sum()
 }
 
-#[must_use]
-pub fn wrap_result(
-    boolean: bool,
-    p_value: f64,
-    coefficient: f64,
-    significance_level: f64,
-) -> TestResult {
-    if boolean {
-        return TestResult::Boolean(p_value >= significance_level);
-    }
-    TestResult::PValue(p_value, coefficient)
-}
-
-/// Compute the Pearson correlation coefficient and its two-tailed p-value.
-///
-/// Tests H₀: ρ = 0 using the t-distribution with n − 2 degrees of freedom.
-/// Returns `(coefficient, p_value)`.
+/// Pearson correlation coefficient of two equal-length slices.
 ///
 /// # Errors
 ///
-/// Returns an error if the input has fewer than 3 elements (degrees of freedom < 1).
-fn pearsonr(x_values: &ArrayView1<f64>, y_values: &ArrayView1<f64>) -> anyhow::Result<(f64, f64)> {
-    let n = x_values.len();
-    ensure!(
-        x_values.len() == y_values.len() && x_values.len() >= MIN_SAMPLE_SIZE,
-        "pearsonr requires equal-length inputs with n >= 3"
-    );
+/// Returns [`CiError::DegenerateData`] if either input has zero variance.
+fn pearson_r(x: &[f64], y: &[f64]) -> Result<f64, CiError> {
+    #[allow(clippy::cast_precision_loss)]
+    let n = x.len() as f64;
+    let x_mean = x.iter().sum::<f64>() / n;
+    let y_mean = y.iter().sum::<f64>() / n;
 
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "array length most likely won't exceed 2^53"
-    )]
-    let number_of_elements = n as f64;
-
-    let x_mean = x_values.sum() / number_of_elements;
-    let y_mean = y_values.sum() / number_of_elements;
-
-    let mut sum_sq_x = 0.0;
-    let mut sum_sq_y = 0.0;
-    let mut sum_coproduct = 0.0;
-
-    for (&x, &y) in x_values.iter().zip(y_values.iter()) {
-        let dx = x - x_mean;
-        let dy = y - y_mean;
-
-        sum_sq_x += dx * dx;
-        sum_sq_y += dy * dy;
-        sum_coproduct += dx * dy;
+    let mut var_x = 0.0;
+    let mut var_y = 0.0;
+    let mut covariance = 0.0;
+    for (&xi, &yi) in x.iter().zip(y) {
+        let dx = xi - x_mean;
+        let dy = yi - y_mean;
+        var_x += dx * dx;
+        var_y += dy * dy;
+        covariance += dx * dy;
     }
 
-    // If one of the datasets is constant, pearson coefficient is undefined.
-    if sum_sq_x == 0.0 || sum_sq_y == 0.0 {
-        let array_name = if sum_sq_x == 0.0 { "x" } else { "y" };
-        panic!("Array {array_name} is constant, so the pearson coëfficient is undefined.");
+    if var_x == 0.0 || var_y == 0.0 {
+        let which = if var_x == 0.0 { "x" } else { "y" };
+        return Err(CiError::DegenerateData(format!(
+            "input `{which}` is constant; Pearson correlation is undefined"
+        )));
     }
 
-    // Calculate correlation directly
-    let mut coefficient = sum_coproduct / (sum_sq_x * sum_sq_y).sqrt();
-
-    // Floating-point math can sometimes drift slightly outside (-1.0, 1.0), so then we clamp.
-    // By adding/subtracting EPS we prevent divide by 0 errors.
-    coefficient = coefficient.clamp(-1.0 + EPS, 1.0 - EPS);
-
-    let t_statistic =
-        coefficient * (number_of_elements - 2.0).sqrt() / (1.0 - coefficient.powi(2)).sqrt();
-
-    let t_distribution = StudentsT::new(0.0, 1.0, number_of_elements - 2.0)?;
-    let p_value = 2.0 * t_distribution.sf(t_statistic.abs());
-
-    Ok((coefficient, p_value))
+    Ok(covariance / (var_x * var_y).sqrt())
 }
 
-#[cfg(test)]
-#[allow(clippy::many_single_char_names)]
-mod tests {
-    use super::*;
-    use crate::utils::EPS;
-    use ndarray::{array, Array1, Array2};
+/// Ordinary-least-squares residuals of `target` regressed on the
+/// `rows × cols` design matrix `design` (stored row-major, `rows >= cols`),
+/// computed via Householder QR.
+///
+/// Returns the length-`rows` residual vector `target − design · β̂`, where `β̂`
+/// minimizes `‖design · β − target‖₂`. The design's first column is the
+/// intercept in our use, so `cols ≤ |Z| + 1` is small and the QR is
+/// well-conditioned.
+///
+/// # Errors
+///
+/// Returns [`CiError::Numeric`] if the design is rank-deficient (a zero pivot on
+/// the diagonal of `R`), which would make the residuals ill-defined.
+fn ols_residuals(
+    design: &[f64],
+    target: &[f64],
+    rows: usize,
+    cols: usize,
+) -> Result<Vec<f64>, CiError> {
+    let rank_deficient = || {
+        CiError::Numeric("rank-deficient design matrix in partial correlation".to_string())
+    };
 
-    const SIGNIFICANCE_LEVEL: f64 = 0.05;
+    // Work on mutable copies: `mat` is triangularized in place, `rhs` is the
+    // transformed right-hand side. Row-major index: mat[i * cols + j].
+    let mut mat = design.to_vec();
+    let mut rhs = target.to_vec();
 
-    fn unwrap_correlated(r: &TestResult) -> (f64, f64) {
-        match r {
-            TestResult::PValue(p, coef) => (*p, *coef),
-            _ => panic!("expected TestResult::PValue"),
+    // Householder QR: zero out below the diagonal column by column.
+    for k in 0..cols {
+        // 2-norm of the sub-column mat[k..rows, k].
+        let mut norm_sq = 0.0;
+        for i in k..rows {
+            let value = mat[i * cols + k];
+            norm_sq += value * value;
+        }
+        let norm = norm_sq.sqrt();
+        if norm == 0.0 {
+            return Err(rank_deficient());
+        }
+        // Householder reflector w = col − alpha·e1, alpha = −sign(pivot)·‖col‖,
+        // where `pivot` is the on-diagonal entry of the column being reduced.
+        let pivot = mat[k * cols + k];
+        let alpha = if pivot >= 0.0 { -norm } else { norm };
+        let mut reflector = vec![0.0; rows - k];
+        reflector[0] = pivot - alpha;
+        for i in (k + 1)..rows {
+            reflector[i - k] = mat[i * cols + k];
+        }
+        let reflector_norm_sq: f64 = reflector.iter().map(|w| w * w).sum();
+        if reflector_norm_sq == 0.0 {
+            // Column already in upper-triangular form; nothing to reflect.
+            continue;
+        }
+
+        // Apply H = I − 2·w·wᵀ / (wᵀw) to the trailing columns of `mat`.
+        for j in k..cols {
+            let mut dot = 0.0;
+            for i in k..rows {
+                dot += reflector[i - k] * mat[i * cols + j];
+            }
+            let factor = 2.0 * dot / reflector_norm_sq;
+            for i in k..rows {
+                mat[i * cols + j] -= factor * reflector[i - k];
+            }
+        }
+        // Apply the same reflection to the right-hand side.
+        let mut dot = 0.0;
+        for i in k..rows {
+            dot += reflector[i - k] * rhs[i];
+        }
+        let factor = 2.0 * dot / reflector_norm_sq;
+        for i in k..rows {
+            rhs[i] -= factor * reflector[i - k];
         }
     }
 
-    #[test]
-    fn uncond_independent_data_accepted() {
-        let t = PearsonCorrelation {
-            boolean: false,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![2., 4., 1., 5., 3., 8., 6., 7., 9., 10.];
-        let y = array![5., 3., 7., 2., 8., 1., 9., 4., 6., 10.];
+    // Back-substitute R·β = rhs[..cols] (R is the upper-left cols×cols of `mat`).
+    let mut beta = vec![0.0; cols];
+    for i in (0..cols).rev() {
+        let mut acc = rhs[i];
+        for j in (i + 1)..cols {
+            acc -= mat[i * cols + j] * beta[j];
+        }
+        let diag = mat[i * cols + i];
+        if diag == 0.0 {
+            return Err(rank_deficient());
+        }
+        beta[i] = acc / diag;
+    }
 
-        let (p, coef) = unwrap_correlated(&t.run_test(x, y, Array2::zeros((0, 0))).unwrap());
-        assert!(p > SIGNIFICANCE_LEVEL, "got {p}");
-        assert!(
-            coef.abs() < 0.1,
-            "coef={coef} should be near 0 for uncorrelated data"
-        );
+    // Residuals target − design·β using the original design matrix.
+    let mut residual = target.to_vec();
+    for i in 0..rows {
+        let mut fitted = 0.0;
+        for j in 0..cols {
+            fitted += design[i * cols + j] * beta[j];
+        }
+        residual[i] -= fitted;
+    }
+    Ok(residual)
+}
+
+/// Compute the (partial) correlation `r` and its degrees of freedom for
+/// `x ⊥ y | z`.
+///
+/// With empty `z` this is the plain Pearson r with `dof = n - 2`. With `z` it is
+/// the correlation of the residuals after regressing X and Y on `[1, Z]`, with
+/// `dof = n - |Z| - 2`. Shared with the equivalence test.
+///
+/// # Errors
+///
+/// Returns [`CiError::DegenerateData`] on constant input or when there are too
+/// few rows, and [`CiError::Numeric`] if the least-squares solve fails.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "x, y, z are the standard conditional-independence variable names from the contract"
+)]
+pub(crate) fn partial_correlation(
+    data: &Dataset,
+    x: usize,
+    y: usize,
+    z: &[usize],
+) -> Result<(f64, usize), CiError> {
+    let x_vals = data.continuous(x)?;
+    let y_vals = data.continuous(y)?;
+    let n = x_vals.len();
+
+    if z.is_empty() {
+        if n < 3 {
+            return Err(CiError::DegenerateData(format!(
+                "need at least 3 rows for correlation, got {n}"
+            )));
+        }
+        let r = pearson_r(x_vals, y_vals)?;
+        return Ok((r, n - 2));
+    }
+
+    let n_z = z.len();
+    if n < n_z + 3 {
+        return Err(CiError::DegenerateData(format!(
+            "need at least |Z| + 3 = {} rows, got {n}",
+            n_z + 3
+        )));
+    }
+
+    // Design matrix [1, Z] (n × (n_z + 1)), stored row-major.
+    let n_cols = n_z + 1;
+    let mut design = vec![0.0; n * n_cols];
+    for row in 0..n {
+        design[row * n_cols] = 1.0;
+    }
+    for (j, &zi) in z.iter().enumerate() {
+        let z_vals = data.continuous(zi)?;
+        for row in 0..n {
+            design[row * n_cols + j + 1] = z_vals[row];
+        }
+    }
+
+    // Residuals of X and Y after regressing each on [1, Z] (intercept included),
+    // then correlate the residuals.
+    let residual_x = ols_residuals(&design, x_vals, n, n_cols)?;
+    let residual_y = ols_residuals(&design, y_vals, n, n_cols)?;
+
+    // If Z explains essentially all of X's (or Y's) variation, the residuals are
+    // pure floating-point noise and the partial correlation is undefined. Detect
+    // this relative to the *original* variable's deviation energy (the SVD path
+    // truncated such residuals to exactly zero; QR leaves ~1e-15 noise). The
+    // threshold sits far below any genuine residual ratio in the fixture.
+    for (residual, original, which) in [
+        (&residual_x, x_vals, "x"),
+        (&residual_y, y_vals, "y"),
+    ] {
+        let original_dev = sum_sq_deviations(original);
+        if sum_sq_deviations(residual) <= VARIANCE_REL_EPS * original_dev {
+            return Err(CiError::DegenerateData(format!(
+                "residual `{which}` is constant after conditioning on Z; \
+                 partial correlation is undefined"
+            )));
+        }
+    }
+
+    let r = pearson_r(&residual_x, &residual_y)?;
+    Ok((r, n - n_z - 2))
+}
+
+/// Two-tailed p-value for H₀: ρ = 0 from `r` and `dof` via the t-distribution.
+///
+/// # Errors
+///
+/// Returns [`CiError::DegenerateData`] if `|r| == 1` (t undefined) and
+/// [`CiError::Numeric`] if the t-distribution construction fails.
+pub(crate) fn correlation_p_value(r: f64, dof: usize) -> Result<f64, CiError> {
+    if (1.0 - r * r) <= 0.0 {
+        return Err(CiError::DegenerateData(
+            "correlation is ±1; t-statistic is undefined".to_string(),
+        ));
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let dof_f = dof as f64;
+    let t = r * (dof_f / (1.0 - r * r)).sqrt();
+    let dist = StudentsT::new(0.0, 1.0, dof_f)
+        .map_err(|e| CiError::Numeric(format!("Student's t distribution: {e}")))?;
+    Ok(2.0 * dist.sf(t.abs()))
+}
+
+impl CITest for PearsonCorrelation {
+    fn test(
+        &self,
+        data: &Dataset,
+        x: usize,
+        y: usize,
+        z: &[usize],
+    ) -> Result<CiResult, CiError> {
+        let (r, dof) = partial_correlation(data, x, y, z)?;
+        let p_value = correlation_p_value(r, dof)?;
+        Ok(CiResult {
+            statistic: Some(r),
+            p_value,
+            dof: Some(dof),
+            effect_size: Some(r.abs()),
+        })
+    }
+
+    fn meta(&self) -> TestMeta {
+        TestMeta {
+            name: "pearson_correlation",
+            data_types: &[DataType::Continuous],
+            symmetric: true,
+            rule: IndependenceRule::PValueGe,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dataset::ColumnKind;
+
+    fn ds(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+        Dataset::from_columns(
+            cols.into_iter()
+                .map(|(n, v)| (n.to_string(), ColumnKind::Continuous, v))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn uncond_boolean_mode() {
-        let t = PearsonCorrelation {
-            boolean: true,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        // independent -> true
-        let x = array![2., 4., 1., 5., 3., 8., 6., 7., 9., 10.];
-        let y = array![5., 3., 7., 2., 8., 1., 9., 4., 6., 10.];
-        let r = t.run_test(x, y, Array2::zeros((0, 0))).unwrap();
-        assert!(matches!(r, TestResult::Boolean(true)));
-
-        // dependent -> false
-        let x = array![1., 2., 3., 4., 5.];
-        let y = array![2., 4., 6., 8., 10.];
-        let r = t.run_test(x, y, Array2::zeros((0, 0))).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
+    fn unconditional_strong_correlation() {
+        // Strongly (but not perfectly) correlated, so 1 - r^2 > 0.
+        let data = ds(vec![
+            ("x", vec![1., 2., 3., 4., 5.]),
+            ("y", vec![2., 4.1, 5.9, 8.2, 9.8]),
+        ]);
+        let r = PearsonCorrelation::new().test(&data, 0, 1, &[]).unwrap();
+        assert!(r.statistic.unwrap() > 0.9);
+        assert_eq!(r.dof, Some(3));
+        assert!(r.p_value < 0.05);
+        assert!((r.effect_size.unwrap() - r.statistic.unwrap().abs()).abs() < 1e-12);
     }
 
     #[test]
-    fn uncond_dependent_data_rejected() {
-        let t = PearsonCorrelation {
-            boolean: false,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![1., 2., 3., 4., 5.];
-        let y = array![2., 4., 6., 8., 10.];
-
-        let (p, coef) = unwrap_correlated(&t.run_test(x, y, Array2::zeros((0, 0))).unwrap());
-        assert!(p < SIGNIFICANCE_LEVEL, "got {p}");
-        assert!(
-            coef.abs() > 0.9,
-            "coef={coef} should be high for perfectly correlated data"
-        );
-    }
-
-    // Z is a confounder: X = 3*Z + noise, Y = 2*Z + noise. After conditioning, residuals are independent.
-    #[test]
-    fn cond_independent_data_accepted() {
-        let t = PearsonCorrelation {
-            boolean: false,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![
-            2.019_608, 1.039_216, 4.058_824, 3.078_431, 6.098_039, 5.117_647, 8.137_255, 7.156_863
-        ];
-        let y = array![
-            2.059_406, 3.059_406, 2.138_614, 3.138_614, 6.217_822, 7.217_822, 6.297_030, 7.297_030
-        ];
-        let z = array![[1.], [2.], [3.], [4.], [5.], [6.], [7.], [8.]];
-        let (p, coef) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(p > SIGNIFICANCE_LEVEL, "got {p}");
-        assert!(
-            coef.abs() < 0.1,
-            "coef={coef} should be near 0 after conditioning"
-        );
+    fn perfect_correlation_is_degenerate() {
+        // r == 1 exactly -> t-statistic undefined; report a clear error.
+        let data = ds(vec![
+            ("x", vec![1., 2., 3., 4., 5.]),
+            ("y", vec![2., 4., 6., 8., 10.]),
+        ]);
+        assert!(matches!(
+            PearsonCorrelation::new().test(&data, 0, 1, &[]),
+            Err(CiError::DegenerateData(_))
+        ));
     }
 
     #[test]
-    fn cond_boolean_mode() {
-        // accepted
-        let t = PearsonCorrelation {
-            boolean: true,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![
-            2.019_608, 1.039_216, 4.058_824, 3.078_431, 6.098_039, 5.117_647, 8.137_255, 7.156_863
-        ];
-        let y = array![
-            2.059_406, 3.059_406, 2.138_614, 3.138_614, 6.217_822, 7.217_822, 6.297_030, 7.297_030
-        ];
-        let z = array![[1.], [2.], [3.], [4.], [5.], [6.], [7.], [8.]];
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(true)));
-
-        // rejected
-        let x = array![1., 2., 3., 4., 5., 6., 7., 8.];
-        let y = array![8., 7., 6., 5., 4., 3., 2., 1.];
-        let z = array![[4.5], [4.5], [4.5], [4.5], [4.5], [4.5], [4.5], [4.5]];
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
-    }
-
-    // Z = 2*X + 2*Y + noise is a collider; conditioning on it induces dependence between X and Y.
-    #[test]
-    fn cond_dependent_data_rejected() {
-        let t = PearsonCorrelation {
-            boolean: false,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![1., 2., 3., 4., 5., 6., 7., 8.];
-        let y = array![8., 7., 6., 5., 4., 3., 2., 1.];
-        let z = array![[9.], [9.], [9.], [9.], [9.], [9.], [9.], [9.]];
-
-        let (p, coef) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(p < SIGNIFICANCE_LEVEL, "got {p}");
-        assert!(
-            coef.abs() > 0.9,
-            "coef={coef} should be high for collider structure"
-        );
+    fn constant_input_is_degenerate_not_panic() {
+        let data = ds(vec![
+            ("x", vec![1., 1., 1., 1., 1.]),
+            ("y", vec![2., 4., 6., 8., 10.]),
+        ]);
+        assert!(matches!(
+            PearsonCorrelation::new().test(&data, 0, 1, &[]),
+            Err(CiError::DegenerateData(_))
+        ));
     }
 
     #[test]
-    fn cond_bool_rejects_dependent() {
-        let t = PearsonCorrelation {
-            boolean: true,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![1., 2., 3., 4., 5., 6., 7., 8.];
-        let y = array![8., 7., 6., 5., 4., 3., 2., 1.];
-        let z = array![[9.], [9.], [9.], [9.], [9.], [9.], [9.], [9.]];
-
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
-    }
-    #[test]
-    fn cond_multiple_vars_independent_accepted() {
-        let t = PearsonCorrelation {
-            boolean: false,
-            significance_level: SIGNIFICANCE_LEVEL,
-        };
-        let x = array![2.5, 2.5, 2.5, 4.0, 4.0, 4.0, 4.0, 5.5];
-        let y = array![2.4, 2.4, 0.8, 2.8, 5.2, 5.2, 3.6, 5.6];
-        let z = array![
-            [1., 0., 1.],
-            [1., 1., 0.],
-            [2., 0., 0.],
-            [2., 1., 1.],
-            [3., 0., 1.],
-            [3., 1., 0.],
-            [4., 0., 0.],
-            [4., 1., 1.],
-        ];
-
-        let (p, coef) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(p > SIGNIFICANCE_LEVEL, "got {p}");
-        assert!(
-            coef.abs() < 0.1,
-            "coef={coef} should be near 0 after conditioning on all confounders"
-        );
+    fn conditional_uses_intercept() {
+        // y = 2*z + 5, x = 3*z + 1: after regressing out [1, z] residuals are ~0.
+        let z = vec![1., 2., 3., 4., 5., 6., 7., 8.];
+        let x: Vec<f64> = z.iter().map(|v| 3.0 * v + 1.0).collect();
+        let y: Vec<f64> = z.iter().map(|v| 2.0 * v + 5.0).collect();
+        let data = ds(vec![("x", x), ("y", y), ("z", z)]);
+        // residuals are ~0 -> constant -> degenerate (exact collinear case).
+        let res = PearsonCorrelation::new().test(&data, 0, 1, &[2]);
+        assert!(matches!(res, Err(CiError::DegenerateData(_))));
     }
 
     #[test]
-    fn pearsonr_errors_on_empty_input() {
-        let x: Array1<f64> = Array1::zeros(0);
-        let y: Array1<f64> = Array1::zeros(0);
-        assert!(pearsonr(&x.view(), &y.view()).is_err());
+    fn dof_accounts_for_conditioning_set() {
+        let z1 = vec![0.1, 0.9, 0.2, 0.8, 0.3, 0.7, 0.4, 0.6, 0.5, 1.1];
+        let z2 = vec![1.1, 0.2, 0.7, 0.3, 0.9, 0.4, 0.8, 0.1, 0.6, 0.5];
+        let x = vec![0.5, 0.4, 0.6, 0.2, 0.9, 0.1, 0.7, 0.3, 0.8, 0.2];
+        let y = vec![0.2, 0.7, 0.1, 0.8, 0.3, 0.9, 0.4, 0.6, 0.5, 0.7];
+        let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
+        let r = PearsonCorrelation::new().test(&data, 0, 1, &[2, 3]).unwrap();
+        // n - |Z| - 2 = 10 - 2 - 2 = 6.
+        assert_eq!(r.dof, Some(6));
     }
 
     #[test]
-    fn pearsonr_errors_on_too_few_elements() {
-        let x = Array1::from_vec(vec![1.0, 2.0]);
-        let y = Array1::from_vec(vec![3.0, 4.0]);
-        assert!(pearsonr(&x.view(), &y.view()).is_err());
-    }
-
-    #[test]
-    fn pearsonr_errors_on_mismatched_lengths() {
-        let x = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let y = Array1::from_vec(vec![1.0, 2.0]);
-        assert!(pearsonr(&x.view(), &y.view()).is_err());
-    }
-
-    #[test]
-    fn pearsonr_succeeds_with_minimum_input() {
-        let x = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let y = Array1::from_vec(vec![1.0, 2.0, 3.0]);
-        let (coef, p_value) = pearsonr(&x.view(), &y.view()).unwrap();
-        assert!((coef - 1.0).abs() < EPS, "perfect positive correlation");
-        assert!(p_value < SIGNIFICANCE_LEVEL, "got {p_value}");
+    fn wrong_kind_errors() {
+        let data = Dataset::from_columns(vec![
+            ("x".into(), ColumnKind::Discrete, vec![1., 2., 3.]),
+            ("y".into(), ColumnKind::Continuous, vec![1., 2., 3.]),
+        ])
+        .unwrap();
+        assert!(matches!(
+            PearsonCorrelation::new().test(&data, 0, 1, &[]),
+            Err(CiError::WrongColumnKind(_))
+        ));
     }
 }

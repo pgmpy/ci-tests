@@ -1,169 +1,81 @@
-use crate::strategy::{CITest, CITestDataType, TestResult};
-use crate::utils::power_divergence::power_divergence;
-use ndarray::{Array1, Array2};
+//! Log-likelihood (G-test) conditional-independence test (power divergence, λ = 0).
 
-const LOG_LIKELIHOOD_LAMBDA: f64 = 0.0;
+use crate::ci_tests::discrete_common::{discrete_meta, run_power_divergence};
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, TestMeta};
 
-/// Log-likelihood ratio (G-test) conditional independence test (λ = 0).
+/// The power-divergence parameter for the log-likelihood (G-test) statistic.
+const LAMBDA: f64 = 0.0;
+
+/// Log-likelihood ratio (G-test) for discrete data (power divergence with λ = 0).
 ///
-/// Operates on discrete data only. Delegates to the power-divergence family
-/// with λ = 0, which corresponds to the G-test / log-likelihood ratio statistic.
-#[derive(Debug, Clone, PartialEq)]
+/// The per-cell statistic is `2 · Σ O·ln(O/E)`. When `yates` is set, Yates'
+/// continuity correction is applied on 2×2 (sub-)tables. Cramér's V is reported
+/// as the effect size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogLikelihood {
-    pub boolean: bool,
-    pub significance_level: f64,
+    /// Whether to apply Yates' continuity correction on 2×2 (sub-)tables.
+    pub yates: bool,
 }
 
 impl LogLikelihood {
+    /// Construct the test with Yates' continuity correction enabled.
     #[must_use]
-    pub fn new(boolean: bool, significance_level: f64) -> Self {
-        Self {
-            boolean,
-            significance_level,
-        }
+    pub fn new() -> Self {
+        Self { yates: true }
+    }
+}
+
+impl Default for LogLikelihood {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl CITest for LogLikelihood {
-    fn run_test(
-        &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        power_divergence(
-            &x_values,
-            &y_values,
-            &z,
-            self.boolean,
-            self.significance_level,
-            LOG_LIKELIHOOD_LAMBDA,
-        )
+    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+        run_power_divergence(data, x, y, z, LAMBDA, self.yates)
     }
 
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Discrete]
+    fn meta(&self) -> TestMeta {
+        discrete_meta("log_likelihood")
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::many_single_char_names)]
 mod tests {
     use super::*;
-    use crate::utils::EPS;
-    use ndarray::{array, Array2};
+    use crate::dataset::ColumnKind;
+    use crate::strategy::{DataType, IndependenceRule};
 
-    fn unwrap_correlated(r: &TestResult) -> (f64, f64, usize) {
-        match r {
-            TestResult::Statistic(a, b, c) => (*a, *b, *c),
-            _ => panic!("expected Correlated2"),
-        }
+    fn ds(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+        Dataset::from_columns(
+            cols.into_iter()
+                .map(|(n, v)| (n.to_string(), ColumnKind::Discrete, v))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn uncond_independent_data_accepted() {
-        let t = LogLikelihood {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let empty = Array2::<f64>::zeros((0, 0));
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!(stat.abs() < EPS);
-        assert!(p > 0.99);
-        assert_eq!(dof, 1);
+    fn unconditional_independent_near_zero() {
+        let data = ds(vec![
+            ("x", vec![1., 1., 2., 2., 1., 1., 2., 2.]),
+            ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
+        ]);
+        let r = LogLikelihood::new().test(&data, 0, 1, &[]).unwrap();
+        assert!(r.statistic.unwrap().abs() < 1e-9);
+        assert_eq!(r.dof, Some(1));
+        assert!(r.p_value > 0.99);
     }
 
     #[test]
-    fn cond_independent_data_accepted() {
-        let t = LogLikelihood {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!((stat).abs() < EPS, " got {stat}");
-        assert!(p > 0.99);
-        assert_eq!(dof, 2);
-    }
-
-    #[test]
-    fn uncond_dependent_data_rejected() {
-        let t = LogLikelihood {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 1., 1., 1., 1., 2., 2., 2., 2., 2., 2.];
-        let y = array![1., 1., 1., 1., 1., 2., 1., 2., 2., 2., 2., 2.];
-        let empty = Array2::<f64>::zeros((0, 0));
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, empty).unwrap());
-        assert!((stat - 5.822_063_320_647_374).abs() < EPS, "got {stat}");
-        assert!((p - 0.015_826_368_796_540_195).abs() < EPS, "got {p}");
-        assert_eq!(dof, 1);
-    }
-
-    #[test]
-    fn cond_dependent_data_rejected() {
-        let t = LogLikelihood {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let z = array![[1.], [1.], [1.], [1.], [2.], [2.], [2.], [2.]];
-
-        let (p, stat, dof) = unwrap_correlated(&t.run_test(x, y, z).unwrap());
-        assert!(
-            (stat - 11.090_354_888_959_125).abs() < EPS,
-            "for stat got {stat}"
-        );
-        assert!((p - 0.003_906_249_999_999_994).abs() < EPS, "for p got {p}");
-        assert_eq!(dof, 2);
-    }
-
-    #[test]
-    fn uncond_bool_rejects_dependent() {
-        let t = LogLikelihood {
-            boolean: true,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 1., 1., 1., 1., 2., 2., 2., 2., 2., 2.];
-        let y = array![1., 1., 1., 1., 1., 2., 1., 2., 2., 2., 2., 2.];
-        let empty = Array2::<f64>::zeros((0, 0));
-        let r = t.run_test(x, y, empty).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
-    }
-
-    #[test]
-    fn cond_bool_rejects_dependent() {
-        let t = LogLikelihood {
-            boolean: true,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 1., 2., 2., 2., 1., 1., 1., 2., 2., 2.];
-        let y = array![1., 1., 2., 2., 2., 2., 1., 1., 2., 2., 2., 2.];
-        let z = array![
-            [1.],
-            [1.],
-            [1.],
-            [1.],
-            [1.],
-            [1.],
-            [2.],
-            [2.],
-            [2.],
-            [2.],
-            [2.],
-            [2.]
-        ];
-
-        let r = t.run_test(x, y, z).unwrap();
-        assert!(matches!(r, TestResult::Boolean(false)));
+    fn meta_is_correct() {
+        let m = LogLikelihood::new().meta();
+        assert_eq!(m.name, "log_likelihood");
+        assert_eq!(m.data_types, &[DataType::Discrete]);
+        assert!(m.symmetric);
+        assert_eq!(m.rule, IndependenceRule::PValueGe);
     }
 }

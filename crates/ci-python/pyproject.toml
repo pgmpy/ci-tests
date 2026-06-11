@@ -22,9 +22,6 @@ build-backend = "maturin"
 module-name = "ci_python._ci_python"
 python-source = "."
 
-[tool.pyo3-stub-gen]
-generate-init-py = true
-
 [project.optional-dependencies]
 test = [
   "pytest",
@@ -36,10 +33,9 @@ testpaths = ["test"]
 [tool.ruff]
 line-length = 120
 
-# Exclude generated files.
+# Exclude the generated native stub package.
 extend-exclude = [
     "ci_python/_ci_python",
-    "ci_python/__init__.py",
 ]
 
 [tool.ruff.lint]

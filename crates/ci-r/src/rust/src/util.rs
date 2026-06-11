@@ -1,26 +1,43 @@
-//! Conversion utilities from core result types to R objects.
+//! Conversion helpers from core types to R objects and errors.
 
-use ci_core::strategy::TestResult;
+use ci_core::error::CiError as CoreError;
+use ci_core::strategy::CiResult as CoreResult;
 use extendr_api::prelude::*;
 
-/// Converts a [`TestResult`] into a named R list.
+/// Map a core [`CoreError`] onto an extendr [`Error`], which extendr raises as
+/// an R error at the call site.
+pub fn to_r_error(err: CoreError) -> Error {
+    Error::Other(err.to_string())
+}
+
+/// Convert a core [`CoreResult`] into the uniform named R list
+/// `list(statistic, p_value, dof, effect_size)`.
 ///
-/// The returned list always contains a `kind` field identifying the variant:
-/// - `"pvalue"` — also contains `p_value` and `coefficient`.
-/// - `"statistic"` — also contains `statistic`, `p_value`, and `df` (degrees of freedom).
-/// - `"boolean"` — also contains `independent` (logical).
-pub fn test_result_to_robj(r: TestResult) -> Robj {
-    match r {
-        TestResult::PValue(p, coef) => {
-            list!(kind = "pvalue", p_value = p, coefficient = coef,).into()
-        }
-        TestResult::Statistic(p, stat, df) => list!(
-            kind = "statistic",
-            statistic = stat,
-            p_value = p,
-            df = df as i32,
-        )
-        .into(),
-        TestResult::Boolean(b) => list!(kind = "boolean", independent = b,).into(),
-    }
+/// Absent optional fields (`statistic`, `dof`, `effect_size`) become R `NULL`;
+/// `p_value` is always present. `dof` is returned as an integer.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "dof is a small degrees-of-freedom count, far below i32::MAX"
+)]
+pub fn result_to_list(result: &CoreResult) -> Robj {
+    let statistic: Robj = match result.statistic {
+        Some(s) => s.into(),
+        None => r!(NULL),
+    };
+    let dof: Robj = match result.dof {
+        Some(d) => (d as i32).into(),
+        None => r!(NULL),
+    };
+    let effect_size: Robj = match result.effect_size {
+        Some(e) => e.into(),
+        None => r!(NULL),
+    };
+    list!(
+        statistic = statistic,
+        p_value = result.p_value,
+        dof = dof,
+        effect_size = effect_size,
+    )
+    .into()
 }

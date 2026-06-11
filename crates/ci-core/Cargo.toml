@@ -12,39 +12,14 @@ categories = ["science"]
 exclude = [""]
 
 [dependencies]
-anyhow = { workspace = true}
-ndarray = { workspace = true }
 statrs = { workspace = true }
-ordered-float = "5.3.0"
-rand = "0.9"
-libm = "0.2.16"
-nalgebra = "0.33"
-
-
+thiserror = "2"
 
 [dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
-rand_distr = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [lints]
 workspace = true
-
-[lib]
-# The library itself has no benchmarks (they live in benches/); disable its
-# auto-generated bench target so `cargo bench` runs only the Criterion benches.
-bench = false
-
-# Benchmarks use the Criterion harness, which provides its own `main`, so the
-# default libtest harness must be disabled for each bench target.
-[[bench]]
-name = "power_divergence_bench"
-harness = false
-
-[[bench]]
-name = "contingency_test_bench"
-harness = false
-
-[[bench]]
-name = "contingency_table_bench"
-harness = false

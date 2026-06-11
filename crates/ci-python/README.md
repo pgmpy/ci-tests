@@ -1,20 +1,27 @@
 # ci-python
 
-Python bindings for the [Conditional Independence Testing](../../README.md) library. Wraps the Rust core via [PyO3](https://pyo3.rs) and accepts NumPy arrays directly.
+Python bindings for the [Conditional Independence Testing](../../README.md) library.
+Wraps the data-bound Rust core via [PyO3](https://pyo3.rs).
+
+The API is **data-bound**: build a `Dataset` once from named, typed columns, then
+construct any test bound to that data and query it with `run_test` /
+`is_independent`. Each test declares its own independence rule, so the caller never
+writes the `p >= alpha` (vs. `p < alpha`) logic.
 
 ## Available tests
 
-| Class | Data type | Numeric output |
-|---|---|---|
-| `ChiSquared` | Discrete | `(p_value, statistic, dof)` |
-| `CressieRead` | Discrete | `(p_value, statistic, dof)` |
-| `FreemanTukey` | Discrete | `(p_value, statistic, dof)` |
-| `LogLikelihood` | Discrete | `(p_value, statistic, dof)` |
-| `ModifiedLikelihood` | Discrete | `(p_value, statistic, dof)` |
-| `PearsonCorrelation` | Continuous | `(p_value, coefficient)` |
-| `PearsonEquivalence` | Continuous | `(p_value, coefficient)` |
+| Class | Data type | Constructor config | `dof` |
+|---|---|---|---|
+| `ChiSquared` | Discrete | `yates=True` | int |
+| `LogLikelihood` | Discrete | `yates=True` | int |
+| `CressieRead` | Discrete | `yates=True` | int |
+| `FreemanTukey` | Discrete | `yates=True` | int |
+| `ModifiedLikelihood` | Discrete | `yates=True` | int |
+| `PearsonCorrelation` | Continuous | — | `None` |
+| `PearsonEquivalence` | Continuous | `delta_threshold=0.1` | `None` |
 
-All tests support an optional conditioning matrix Z. Pass an empty matrix for unconditional tests.
+`run_test` returns a `CiResult` with attributes `statistic` (float | None),
+`p_value` (float), `dof` (int | None), and `effect_size` (float | None).
 
 ## Requirements
 
@@ -32,75 +39,64 @@ pip install maturin
 maturin develop -m crates/ci-python/Cargo.toml
 ```
 
+> On Python 3.14 with PyO3 0.24, build with
+> `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` set (the crate already requests the
+> `abi3-py310` feature).
+
 ## Usage
 
-### Numeric mode
-
-Numeric mode returns the raw test statistic alongside the p-value. Construct a test with `boolean=False`:
-
 ```python
 import numpy as np
-from ci_python import ChiSquared
+from ci_python import Dataset, ChiSquared, PearsonEquivalence
 
-test = ChiSquared(boolean=False, significance_level=0.05)
+data = Dataset({
+    "A": ("discrete", np.array([0, 1, 0, 1, 0, 1, 1, 0], dtype=float)),
+    "B": ("discrete", np.array([1, 1, 0, 0, 1, 0, 1, 0], dtype=float)),
+    "X": ("continuous", np.random.default_rng(0).standard_normal(8)),
+})
 
-x = np.array([0.0, 1.0, 0.0, 1.0, 0.0], dtype=np.float64)
-y = np.array([1.0, 0.0, 1.0, 0.0, 1.0], dtype=np.float64)
-z = np.empty((len(x), 0), dtype=np.float64)  # unconditional
+# Discrete: chi-squared with Yates' correction (the default).
+chi = ChiSquared(data)                     # yates=True
+res = chi.run_test("A", "B", ["X"])        # A ⟂ B | X
+res.statistic, res.p_value, res.dof, res.effect_size
+chi.is_independent("A", "B", ["X"], significance_level=0.05)   # -> bool (p >= alpha)
 
-p_value, statistic, dof = test.run_test(x, y, z)
-print(f"p={p_value:.4f}, chi2={statistic:.4f}, df={dof}")
+# Continuous equivalence (TOST): extra arg lives in the constructor.
+eqv = PearsonEquivalence(data, delta_threshold=0.1)
+res = eqv.run_test("X", "A")               # res.dof is None
+eqv.is_independent("X", "A", significance_level=0.05)          # -> bool (p < alpha)
 ```
 
-For continuous data, the return type is `(p_value, coefficient)` rather than a triple:
+- `x` and `y` accept a column **name** (`str`) or an integer **index**; `z` is a
+  sequence of names/indices (default: empty conditioning set).
+- A test constructor accepts either a `Dataset` or a raw
+  `{name: (kind, values)}` mapping.
+- Core errors (degenerate data, wrong column kind, …) raise `ci_python.CiError`;
+  unknown columns / out-of-range indices raise `ValueError`.
+
+### From a pandas DataFrame
+
+`Dataset.from_pandas` infers kinds from dtypes (integer / bool / categorical →
+discrete, float → continuous). `pandas` is imported lazily and is not a hard
+dependency of the package.
 
 ```python
-from ci_python import PearsonCorrelation
+import pandas as pd
+from ci_python import Dataset, ChiSquared
 
-test = PearsonCorrelation(boolean=False, significance_level=0.05)
-p_value, coefficient = test.run_test(x, y, z)
-```
-
-### Boolean mode
-
-Boolean mode returns a single `bool`: `True` if the null hypothesis of independence is not rejected, `False` if it is rejected. Construct the test with `boolean=True`:
-
-```python
-from ci_python import CressieRead
-
-test = CressieRead(boolean=True, significance_level=0.05)
-independent: bool = test.run_test(x, y, z)
-```
-
-### Conditional tests
-
-Pass a conditioning matrix Z where each column is one conditioning variable. The matrix must have the same number of rows as x and y:
-
-```python
-import numpy as np
-from ci_python import ChiSquared
-
-x = np.array([1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0], dtype=np.float64)
-y = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0], dtype=np.float64)
-z = np.array([[0.0], [0.0], [0.0], [0.0], [1.0], [1.0], [1.0], [1.0]], dtype=np.float64)
-
-test = ChiSquared(boolean=False, significance_level=0.05)
-p_value, statistic, dof = test.run_test(x, y, z)
-```
-
-To condition on multiple variables, stack them as columns:
-
-```python
-z = np.column_stack([z1, z2])  # shape (n, 2)
-test.run_test(x, y, z)
+df = pd.DataFrame({"A": [0, 1, 0, 1], "B": [1, 1, 0, 0]})
+ChiSquared(Dataset.from_pandas(df)).run_test("A", "B")
 ```
 
 ## Running tests
 
 ```bash
 pip install -e "crates/ci-python[test]"
-pytest crates/ci-python
+pytest crates/ci-python/test
 ```
+
+The golden test (`test/test_golden.py`) checks numeric parity against the shared
+scipy/pgmpy fixture (`tests/fixtures/golden.json`).
 
 ## License
 

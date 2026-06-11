@@ -1,182 +1,81 @@
-use crate::strategy::{CITest, CITestDataType, TestResult};
-use crate::utils::power_divergence::power_divergence;
-use ndarray::{Array1, Array2};
+//! Cressie-Read conditional-independence test (power divergence, λ = 2/3).
 
-const CRESSIE_READ_LAMBDA: f64 = 2.0 / 3.0;
+use crate::ci_tests::discrete_common::{discrete_meta, run_power_divergence};
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, TestMeta};
 
-/// Cressie–Read conditional independence test (λ = 2/3).
+/// The power-divergence parameter for the Cressie-Read statistic.
+const LAMBDA: f64 = 2.0 / 3.0;
+
+/// Cressie-Read power-divergence test for discrete data (λ = 2/3), the
+/// recommended compromise between Pearson and the likelihood-ratio statistics.
 ///
-/// Operates on discrete data only. Delegates to the power-divergence family
-/// with λ = 2/3, the Cressie–Read statistic.
-#[derive(Debug, Clone, PartialEq)]
+/// When `yates` is set, Yates' continuity correction is applied on 2×2
+/// (sub-)tables. Cramér's V is reported as the effect size.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CressieRead {
-    pub boolean: bool,
-    pub significance_level: f64,
+    /// Whether to apply Yates' continuity correction on 2×2 (sub-)tables.
+    pub yates: bool,
 }
 
 impl CressieRead {
+    /// Construct the test with Yates' continuity correction enabled.
     #[must_use]
-    pub fn new(boolean: bool, significance_level: f64) -> Self {
-        Self {
-            boolean,
-            significance_level,
-        }
+    pub fn new() -> Self {
+        Self { yates: true }
+    }
+}
+
+impl Default for CressieRead {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl CITest for CressieRead {
-    fn run_test(
-        &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        power_divergence(
-            &x_values,
-            &y_values,
-            &z,
-            self.boolean,
-            self.significance_level,
-            CRESSIE_READ_LAMBDA,
-        )
+    fn test(&self, data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<CiResult, CiError> {
+        run_power_divergence(data, x, y, z, LAMBDA, self.yates)
     }
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Discrete]
+
+    fn meta(&self) -> TestMeta {
+        discrete_meta("cressie_read")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::EPS;
-    use ndarray::array;
+    use crate::dataset::ColumnKind;
+    use crate::strategy::{DataType, IndependenceRule};
 
-    fn unwrap_correlated(result: &TestResult) -> (f64, f64, usize) {
-        match result {
-            TestResult::Statistic(a, b, c) => (*a, *b, *c),
-            _ => panic!("expected Correlated2"),
-        }
-    }
-
-    fn unwrap_boolean(result: &TestResult) -> bool {
-        match result {
-            TestResult::Boolean(b) => *b,
-            _ => panic!("expected Boolean"),
-        }
+    fn ds(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+        Dataset::from_columns(
+            cols.into_iter()
+                .map(|(n, v)| (n.to_string(), ColumnKind::Discrete, v))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn unconditional_independent_data_is_not_rejected() {
-        let test = CressieRead {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let empty_z = Array2::<f64>::zeros((0, 0));
-
-        let (p_value, statistic, dof) = unwrap_correlated(
-            &test
-                .run_test(x.clone(), y.clone(), empty_z.clone())
-                .unwrap(),
-        );
-        assert!(
-            statistic.abs() < EPS,
-            "expected statistic ~0, got {statistic}"
-        );
-        assert!(p_value > 0.99, "expected p ~1, got {p_value}");
-        assert_eq!(dof, 1);
-
-        let independent = unwrap_boolean(
-            &CressieRead {
-                boolean: true,
-                significance_level: 0.05,
-            }
-            .run_test(x, y, empty_z)
-            .unwrap(),
-        );
-        assert!(independent, "expected fail-to-reject (independent=true)");
+    fn unconditional_independent_near_zero() {
+        let data = ds(vec![
+            ("x", vec![1., 1., 2., 2., 1., 1., 2., 2.]),
+            ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
+        ]);
+        let r = CressieRead::new().test(&data, 0, 1, &[]).unwrap();
+        assert!(r.statistic.unwrap().abs() < 1e-9);
+        assert_eq!(r.dof, Some(1));
+        assert!(r.p_value > 0.99);
     }
 
     #[test]
-    fn unconditional_dependent_data_is_rejected() {
-        let test = CressieRead {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let y = array![1., 1., 1., 1., 2., 2., 2., 2.];
-        let empty_z = Array2::<f64>::zeros((0, 0));
-
-        let (p_value, statistic, _dof) = unwrap_correlated(
-            &test
-                .run_test(x.clone(), y.clone(), empty_z.clone())
-                .unwrap(),
-        );
-        assert!(statistic > 5.0, "expected large statistic, got {statistic}");
-        assert!(
-            p_value < test.significance_level,
-            "expected p < {}, got {p_value}",
-            test.significance_level
-        );
-
-        let independent = unwrap_boolean(
-            &CressieRead {
-                boolean: true,
-                significance_level: 0.05,
-            }
-            .run_test(x, y, empty_z)
-            .unwrap(),
-        );
-        assert!(!independent, "expected reject (independent=false)");
-    }
-
-    #[test]
-    fn conditional_independent_per_group() {
-        let test = CressieRead {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 2., 1., 2., 1., 2., 1., 2.];
-        let z = Array2::from_shape_vec((8, 1), vec![0., 0., 0., 0., 1., 1., 1., 1.]).unwrap();
-
-        let (p_value, statistic, dof) =
-            unwrap_correlated(&test.run_test(x.clone(), y.clone(), z.clone()).unwrap());
-        assert!(
-            statistic.abs() < EPS,
-            "expected statistic ~0, got {statistic}"
-        );
-        assert!(p_value > 0.99, "expected p ~1, got {p_value}");
-        assert_eq!(dof, 2);
-
-        let independent = unwrap_boolean(
-            &CressieRead {
-                boolean: true,
-                significance_level: 0.05,
-            }
-            .run_test(x, y, z)
-            .unwrap(),
-        );
-        assert!(independent);
-    }
-
-    #[test]
-    fn conditional_dependent_per_group() {
-        let test = CressieRead {
-            boolean: false,
-            significance_level: 0.05,
-        };
-        let x = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let y = array![1., 1., 2., 2., 1., 1., 2., 2.];
-        let z = Array2::from_shape_vec((8, 1), vec![0., 0., 0., 0., 1., 1., 1., 1.]).unwrap();
-
-        let (p_value, statistic, _dof) = unwrap_correlated(&test.run_test(x, y, z).unwrap());
-        assert!(statistic > 5.0, "expected large statistic, got {statistic}");
-        assert!(
-            p_value < test.significance_level,
-            "expected p < {}, got {p_value}",
-            test.significance_level
-        );
+    fn meta_is_correct() {
+        let m = CressieRead::new().meta();
+        assert_eq!(m.name, "cressie_read");
+        assert_eq!(m.data_types, &[DataType::Discrete]);
+        assert!(m.symmetric);
+        assert_eq!(m.rule, IndependenceRule::PValueGe);
     }
 }

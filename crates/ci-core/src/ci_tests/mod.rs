@@ -1,3 +1,13 @@
+//! Concrete conditional-independence tests.
+//!
+//! Five discrete power-divergence tests ([`ChiSquared`], [`LogLikelihood`],
+//! [`CressieRead`], [`FreemanTukey`], [`ModifiedLikelihood`]) share the
+//! λ-parameterized discrete back-end via [`discrete_common`]; two continuous
+//! tests ([`PearsonCorrelation`], [`PearsonEquivalence`]) cover the
+//! partial-correlation path.
+
+mod discrete_common;
+
 pub mod chi_squared;
 pub mod cressie_read;
 pub mod freeman_tukey;

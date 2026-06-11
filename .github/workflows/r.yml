@@ -1,11 +1,31 @@
 name: R CI
 
+# NOTE: The build/test commands below were verified by running them locally
+# against this branch. They are NOT exercised on GitHub Actions until this
+# workflow runs there, so the exact runner setup may still need tweaks.
+#
+# Toolchain: R + rextendr (which compiles the embedded Rust crate), devtools,
+# testthat, and jsonlite (the golden suite reads tests/fixtures/golden.json via
+# jsonlite::fromJSON). rextendr::document() regenerates the extendr wrappers,
+# then devtools::test() runs the package suite (469 tests, including the 73-case
+# golden parity gate).
+#
+# We use r-lib/actions/setup-r (a standard CRAN R), which does NOT require the
+# LD_LIBRARY_PATH workaround. (A *conda* R does: there you must export
+# LD_LIBRARY_PATH=$(Rscript -e 'cat(R.home("lib"))') so the embedded Rust can
+# link libR — not needed with the standard action below.)
+#
+# Commands are run from the repo root with the package path passed explicitly
+# (rextendr::document("crates/ci-r") / devtools::test("crates/ci-r")) so the
+# golden suite reliably resolves the repo-root fixture.
+
 on:
   push:
     branches: [master, development]
     paths:
       - 'crates/ci-r/**'
       - 'crates/ci-core/**'
+      - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
@@ -13,6 +33,7 @@ on:
     paths:
       - 'crates/ci-r/**'
       - 'crates/ci-core/**'
+      - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
@@ -74,18 +95,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # jsonlite is required by the golden suite but is not a package dependency,
+      # so install it alongside devtools/rextendr/testthat.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: crates/ci-r
-          extra-packages: any::devtools, any::rextendr
+          extra-packages: any::devtools, any::rextendr, any::testthat, any::jsonlite
 
+      # Verified locally: regenerate the extendr wrappers (compiles the Rust).
       - name: Generate Makevars and R wrappers
-        working-directory: crates/ci-r
-        run: rextendr::document()
+        run: rextendr::document("crates/ci-r")
         shell: Rscript {0}
 
+      # Verified locally: `devtools::test("crates/ci-r")` -> 469 tests incl. the
+      # 73-case golden parity gate (tests/fixtures/golden.json).
       - name: Run R tests
-        working-directory: crates/ci-r
-        run: devtools::test(reporter = "summary")
+        run: devtools::test("crates/ci-r", reporter = "summary")
         shell: Rscript {0}

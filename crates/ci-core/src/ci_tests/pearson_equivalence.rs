@@ -1,386 +1,136 @@
-use crate::ci_tests::PearsonCorrelation;
-use crate::strategy::{CITest, CITestDataType, TestResult};
-use crate::utils::EPS;
+//! Pearson equivalence (TOST) conditional-independence test (continuous).
 
-const FISHER_Z_DOF_OFFSET: usize = 3;
-use anyhow::bail;
-use ndarray::{Array1, Array2, Axis};
 use statrs::distribution::{ContinuousCDF, Normal};
 
-/// Pearson equivalence (TOST) conditional independence test.
-///
-/// Uses the Two One-Sided Tests (TOST) framework with Fisher's z-transformation
-/// to test whether the partial correlation is small enough to declare independence.
-///
-/// **Note**: the p-value convention is inverted relative to the other tests. A *low*
-/// p-value (below `significance_level`) means the correlation is within `delta_threshold`
-/// of zero and the null of dependence is rejected — i.e. the variables are declared
-/// independent.
-#[derive(Debug, Clone, PartialEq)]
+use crate::ci_tests::pearson_correlation::partial_correlation;
+use crate::dataset::Dataset;
+use crate::error::CiError;
+use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
+
+/// Clipping bound for `rho`: `[-1 + EPS, 1 - EPS]`. Matches the reference's
+/// `np.clip(rho, -0.999999, 0.999999)`.
+const RHO_CLIP_EPS: f64 = 1e-6;
+
+/// Two One-Sided Tests (TOST) equivalence test on the partial correlation,
+/// using Fisher's z-transform. A *low* p-value (below the significance level)
+/// declares independence, so the rule is [`IndependenceRule::PValueLt`].
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PearsonEquivalence {
-    pub boolean: bool,
-    pub significance_level: f64,
+    /// Equivalence margin on the correlation scale (the "negligible" effect).
     pub delta_threshold: f64,
 }
 
 impl PearsonEquivalence {
+    /// Construct the test with the given equivalence margin.
     #[must_use]
-    pub fn new(boolean: bool, significance_level: f64, delta_threshold: f64) -> Self {
-        Self {
-            boolean,
-            significance_level,
-            delta_threshold,
-        }
+    pub fn new(delta_threshold: f64) -> Self {
+        Self { delta_threshold }
     }
 }
 
 impl CITest for PearsonEquivalence {
-    fn run_test(
+    #[allow(
+        clippy::many_single_char_names,
+        reason = "x, y, z are the contract variable names; c is the Fisher-z scale factor"
+    )]
+    fn test(
         &self,
-        x_values: Array1<f64>,
-        y_values: Array1<f64>,
-        z: Array2<f64>,
-    ) -> anyhow::Result<TestResult> {
-        let n = x_values.len();
-        let s = z.axis_iter(Axis(1)).len();
+        data: &Dataset,
+        x: usize,
+        y: usize,
+        z: &[usize],
+    ) -> Result<CiResult, CiError> {
+        let n = data.continuous(x)?.len();
+        let n_z = z.len();
 
-        let pearsonr = PearsonCorrelation {
-            boolean: false,
-            significance_level: self.significance_level,
-        }
-        .run_test(x_values, y_values, z);
-        let statistic = match pearsonr {
-            Ok(TestResult::PValue(_, statistic)) => statistic,
-            Ok(_) => 0.0,
-            Err(e) => return Err(e),
-        };
-        let rho = if statistic <= -1.0 {
-            -1.0 + EPS
-        } else if statistic >= 1.0 {
-            1.0 - EPS
-        } else {
-            statistic
-        };
+        let (rho_raw, _dof) = partial_correlation(data, x, y, z)?;
+        let rho = rho_raw.clamp(-1.0 + RHO_CLIP_EPS, 1.0 - RHO_CLIP_EPS);
 
-        let coefficient = rho.atanh();
+        let z_rho = rho.atanh();
         let z_delta = self.delta_threshold.atanh();
 
-        #[allow(
-            clippy::cast_precision_loss,
-            reason = "array length and number of variables most likely won't exceed 2^53"
-        )]
-        let argument = (n - s - FISHER_Z_DOF_OFFSET) as f64;
-        let std_error_factor = if argument >= 0.0 {
-            argument.sqrt()
-        } else {
-            bail!("The length of the data should be at least 3 greater than the number of conditional variables");
-        };
+        // c = sqrt(n - |Z| - 3); error if the radicand is negative.
+        if n < n_z + 3 {
+            return Err(CiError::DegenerateData(format!(
+                "need at least |Z| + 3 = {} rows for the equivalence test, got {n}",
+                n_z + 3
+            )));
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let c = ((n - n_z - 3) as f64).sqrt();
 
-        let normal = Normal::new(0.0, 1.0).unwrap();
+        let normal = Normal::new(0.0, 1.0)
+            .map_err(|e| CiError::Numeric(format!("standard normal: {e}")))?;
 
-        let z_score_lower = std_error_factor * (coefficient + z_delta);
-        let z_score_upper = std_error_factor * (coefficient - z_delta);
+        let p_lower = 1.0 - normal.cdf(c * (z_rho + z_delta));
+        let p_upper = normal.cdf(c * (z_rho - z_delta));
+        let p_value = p_lower.max(p_upper);
 
-        let p_value_lower = 1.0 - normal.cdf(z_score_lower);
-        let p_value_upper = normal.cdf(z_score_upper);
-
-        let p_value = if p_value_lower > p_value_upper {
-            p_value_lower
-        } else {
-            p_value_upper
-        };
-
-        Ok(wrap_result(
-            self.boolean,
+        Ok(CiResult {
+            statistic: Some(z_rho),
             p_value,
-            coefficient,
-            self.significance_level,
-        ))
+            dof: None,
+            effect_size: Some(rho.abs()),
+        })
     }
 
-    fn data_types(&self) -> &'static [CITestDataType] {
-        &[CITestDataType::Continuous]
+    fn meta(&self) -> TestMeta {
+        TestMeta {
+            name: "pearson_equivalence",
+            data_types: &[DataType::Continuous],
+            symmetric: true,
+            rule: IndependenceRule::PValueLt,
+        }
     }
-}
-
-#[must_use]
-pub fn wrap_result(
-    boolean: bool,
-    p_value: f64,
-    coefficient: f64,
-    significance_level: f64,
-) -> TestResult {
-    if boolean {
-        return TestResult::Boolean(p_value < significance_level);
-    }
-    TestResult::PValue(p_value, coefficient)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{array, stack, Array1, Array2, Axis};
-    use rand::rngs::SmallRng;
-    use rand::SeedableRng;
-    use rand_distr::{Distribution, Normal};
+    use crate::dataset::ColumnKind;
 
-    const SIGNIFICANCE_LEVEL: f64 = 0.05;
-    const DELTA_THRESHOLD: f64 = 0.1;
-    // Specific tests imported from pgmpy fail with default epsilon
-    const PGMPY_EPS: f64 = 1e-8;
-
-    const N: usize = 1000;
-
-    #[test]
-    fn basic_test() {
-        let x_vals = array![1.0, 2.0, 3.0, 4.0];
-        let y_vals = array![1.0, 1.0, 2.0, 2.0];
-        let empty_z = array![[]];
-
-        let test = PearsonEquivalence {
-            boolean: false,
-            significance_level: 0.05,
-            delta_threshold: DELTA_THRESHOLD,
-        };
-        let result = test.run_test(x_vals, y_vals, empty_z);
-
-        let (p_value, statistic) = match result {
-            Ok(TestResult::PValue(a, b)) => (a, b),
-            _ => (0.0, 0.0),
-        };
-
-        // values taken from pgmpy
-        assert!((p_value - 0.910_412_594_569_001_1).abs() < PGMPY_EPS);
-        assert!((statistic - 1.443_635_475_178_810_7).abs() < PGMPY_EPS);
-    }
-
-    fn seeded_rng() -> SmallRng {
-        SmallRng::seed_from_u64(40)
-    }
-
-    fn gen_normal(n: usize, mean: f64, std_dev: f64, rng: &mut SmallRng) -> Array1<f64> {
-        let dist = Normal::new(mean, std_dev).unwrap();
-        Array1::from_vec((0..n).map(|_| dist.sample(rng)).collect())
-    }
-
-    fn empty_array() -> Array2<f64> {
-        Array2::zeros((0, 0))
-    }
-
-    fn pearson() -> PearsonEquivalence {
-        PearsonEquivalence {
-            boolean: false,
-            significance_level: 0.05,
-            delta_threshold: DELTA_THRESHOLD,
-        }
-    }
-
-    fn pearson_boolean() -> PearsonEquivalence {
-        PearsonEquivalence {
-            boolean: true,
-            significance_level: 0.05,
-            delta_threshold: DELTA_THRESHOLD,
-        }
+    fn ds(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+        Dataset::from_columns(
+            cols.into_iter()
+                .map(|(n, v)| (n.to_string(), ColumnKind::Continuous, v))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn unconditional_independent_data_is_not_rejected() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let y = gen_normal(N, 0.0, 1.0, &mut rng);
-
-        let result = pearson().run_test(x, y, empty_array()).unwrap();
-        match result {
-            TestResult::PValue(p_value, coefficient) => {
-                assert!(
-                    p_value <= SIGNIFICANCE_LEVEL,
-                    "p_value {p_value} should be <= 0.05 for independent data"
-                );
-                assert!(
-                    coefficient.abs() < DELTA_THRESHOLD,
-                    "coefficient {coefficient} should be near 0 for independent data"
-                );
-            }
-            _ => panic!("Expected TestResult::PValue"),
-        }
+    fn meta_uses_pvalue_lt() {
+        let m = PearsonEquivalence::new(0.1).meta();
+        assert_eq!(m.name, "pearson_equivalence");
+        assert_eq!(m.rule, IndependenceRule::PValueLt);
+        assert_eq!(m.data_types, &[DataType::Continuous]);
+        assert!(m.symmetric);
     }
 
     #[test]
-    fn unconditional_boolean_accepts_independent() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let y = gen_normal(N, 0.0, 1.0, &mut rng);
-
-        let result = pearson_boolean().run_test(x, y, empty_array()).unwrap();
-        match result {
-            TestResult::Boolean(independent) => {
-                assert!(independent, "Independent data should return true");
-            }
-            _ => panic!("Expected TestResult::Boolean"),
-        }
+    fn reports_fisher_z_statistic_and_no_dof() {
+        let data = ds(vec![
+            ("x", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+            ("y", vec![2.0, 1.0, 4.0, 3.0, 6.0, 5.0]),
+        ]);
+        let r = PearsonEquivalence::new(0.1).test(&data, 0, 1, &[]).unwrap();
+        assert!(r.dof.is_none());
+        // statistic is atanh(rho); effect_size is |rho|.
+        let rho = r.statistic.unwrap().tanh();
+        assert!((r.effect_size.unwrap() - rho.abs()).abs() < 1e-9);
     }
 
     #[test]
-    fn unconditional_dependent_data_is_rejected() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise = gen_normal(N, 0.0, 0.1, &mut rng);
-        let y = &x * 3.0 + &noise;
-
-        let result = pearson().run_test(x, y, empty_array()).unwrap();
-        match result {
-            TestResult::PValue(p_value, coefficient) => {
-                assert!(
-                    p_value >= SIGNIFICANCE_LEVEL,
-                    "p_value {p_value} should be >= 0.05 for correlated data"
-                );
-                assert!(
-                    coefficient.abs() > 0.9,
-                    "coefficient {coefficient} should be high for correlated data"
-                );
-            }
-            _ => panic!("Expected TestResult::PValue"),
-        }
-    }
-
-    #[test]
-    fn unconditional_boolean_rejects_dependent() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise = gen_normal(N, 0.0, 0.1, &mut rng);
-        let y = &x * 3.0 + &noise;
-
-        let result = pearson_boolean().run_test(x, y, empty_array()).unwrap();
-        match result {
-            TestResult::Boolean(independent) => {
-                assert!(!independent, "Correlated data should return false");
-            }
-            _ => panic!("Expected TestResult::Boolean"),
-        }
-    }
-
-    // Z is a confounder: X = 3*Z + noise, Y = 2*Z + noise. After conditioning, residuals are independent.
-    #[test]
-    fn conditional_independent_data_is_not_rejected() {
-        let mut rng = seeded_rng();
-        let z = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise_x = gen_normal(N, 0.0, 0.1, &mut rng);
-        let noise_y = gen_normal(N, 0.0, 0.1, &mut rng);
-        let x = &z * 3.0 + &noise_x;
-        let y = &z * 2.0 + &noise_y;
-        let array = z.insert_axis(Axis(1));
-
-        let result = pearson().run_test(x, y, array).unwrap();
-        match result {
-            TestResult::PValue(p_value, coefficient) => {
-                assert!(
-                    p_value <= SIGNIFICANCE_LEVEL,
-                    "p_value {p_value} should be <= 0.05 after conditioning"
-                );
-                assert!(
-                    coefficient.abs() < DELTA_THRESHOLD,
-                    "coefficient {coefficient} should be near 0 after conditioning"
-                );
-            }
-            _ => panic!("Expected TestResult::PValue"),
-        }
-    }
-
-    #[test]
-    fn conditional_boolean_accepts_independent() {
-        let mut rng = seeded_rng();
-        let z = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise_x = gen_normal(N, 0.0, 0.1, &mut rng);
-        let noise_y = gen_normal(N, 0.0, 0.1, &mut rng);
-        let x = &z * 3.0 + &noise_x;
-        let y = &z * 2.0 + &noise_y;
-        let array = z.insert_axis(Axis(1));
-
-        let result = pearson_boolean().run_test(x, y, array).unwrap();
-        match result {
-            TestResult::Boolean(independent) => {
-                assert!(
-                    independent,
-                    "Conditionally independent data should return true"
-                );
-            }
-            _ => panic!("Expected TestResult::Boolean"),
-        }
-    }
-
-    // Z = 2*X + 2*Y + noise is a collider; conditioning on it induces dependence between X and Y.
-    #[test]
-    fn conditional_dependent_data_is_rejected() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let y = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise = gen_normal(N, 0.0, 0.1, &mut rng);
-        let z = &x * 2.0 + &y * 2.0 + &noise;
-        let array = z.insert_axis(Axis(1));
-
-        let result = pearson().run_test(x, y, array).unwrap();
-        match result {
-            TestResult::PValue(p_value, coefficient) => {
-                assert!(
-                    p_value >= SIGNIFICANCE_LEVEL,
-                    "p_value {p_value} should be >= 0.05 for v-structure"
-                );
-                assert!(
-                    coefficient.abs() > 0.9,
-                    "coefficient {coefficient} should be high for v-structure"
-                );
-            }
-            _ => panic!("Expected TestResult::PValue"),
-        }
-    }
-
-    #[test]
-    fn conditional_boolean_rejects_dependent() {
-        let mut rng = seeded_rng();
-        let x = gen_normal(N, 0.0, 1.0, &mut rng);
-        let y = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise = gen_normal(N, 0.0, 0.1, &mut rng);
-        let z = &x * 2.0 + &y * 2.0 + &noise;
-        let array = z.insert_axis(Axis(1));
-
-        let result = pearson_boolean().run_test(x, y, array).unwrap();
-        match result {
-            TestResult::Boolean(independent) => {
-                assert!(
-                    !independent,
-                    "V-structure conditioned on collider should return false"
-                );
-            }
-            _ => panic!("Expected TestResult::Boolean"),
-        }
-    }
-
-    #[test]
-    fn conditional_multiple_vars_independent_is_not_rejected() {
-        let mut rng = seeded_rng();
-        let z_1 = gen_normal(N, 0.0, 1.0, &mut rng);
-        let z_2 = gen_normal(N, 0.0, 1.0, &mut rng);
-        let z_3 = gen_normal(N, 0.0, 1.0, &mut rng);
-        let noise_x = gen_normal(N, 0.0, 0.1, &mut rng);
-        let noise_y = gen_normal(N, 0.0, 0.1, &mut rng);
-        let x = 0.5 * &z_1 + 0.5 * &z_2 + 0.5 * &z_3 + &noise_x;
-        let y = 0.5 * &z_1 + 0.5 * &z_2 + 0.5 * &z_3 + &noise_y;
-
-        let array = stack(Axis(1), &[z_1.view(), z_2.view(), z_3.view()]).unwrap();
-
-        let result = pearson().run_test(x, y, array).unwrap();
-        match result {
-            TestResult::PValue(p_value, coefficient) => {
-                assert!(
-                    p_value < SIGNIFICANCE_LEVEL,
-                    "p_value {p_value} should be < 0.05 after conditioning on all confounders"
-                );
-                assert!(
-                    coefficient.abs() <= DELTA_THRESHOLD,
-                    "coefficient {coefficient} should be near 0 after conditioning on all confounders"
-                );
-            }
-            _ => panic!("Expected TestResult::PValue"),
-        }
+    fn too_few_rows_is_degenerate() {
+        // n=3, |Z|=1 -> n - |Z| - 3 = -1 < 0.
+        let data = ds(vec![
+            ("x", vec![1.0, 2.0, 3.0]),
+            ("y", vec![3.0, 2.0, 1.0]),
+            ("z", vec![1.0, 2.0, 3.0]),
+        ]);
+        assert!(matches!(
+            PearsonEquivalence::new(0.1).test(&data, 0, 1, &[2]),
+            Err(CiError::DegenerateData(_))
+        ));
     }
 }
