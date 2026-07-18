@@ -66,7 +66,9 @@ impl CITest for PearsonEquivalence {
             statistic: Some(z_rho),
             p_value,
             dof: None,
-            effect_size: Some(rho.abs()),
+            // effect_size reports the observed (un-clipped) partial correlation,
+            // matching Fisher-Z; the clip only guards the atanh statistic above.
+            effect_size: Some(rho_raw.abs()),
         })
     }
 
