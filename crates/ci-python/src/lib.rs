@@ -173,7 +173,10 @@ fn parse_kind(kind: &str) -> PyResult<ColumnKind> {
 /// so codes only need to be value-distinct).
 fn extract_values(kind: ColumnKind, obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
     if let Ok(arr) = obj.extract::<PyReadonlyArray1<'_, f64>>() {
-        return Ok(arr.as_slice()?.to_vec());
+        // `as_slice()` requires a C-contiguous layout; `as_array()` iterates in
+        // logical order for any layout, so strided views (`a[::2]`), Fortran
+        // order, and float64 columns sliced out of a 2-D array all work.
+        return Ok(arr.as_array().iter().copied().collect());
     }
     let items: Vec<Bound<'_, PyAny>> = obj.try_iter()?.collect::<PyResult<_>>()?;
     let numeric: PyResult<Vec<f64>> = items.iter().map(PyAnyMethods::extract::<f64>).collect();

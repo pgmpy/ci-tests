@@ -77,6 +77,38 @@ mod tests {
     }
 
     #[test]
+    fn balanced_independent_table_has_finite_effect_size() {
+        // Cressie-Read on a balanced independent 2x2 ([[4,4],[4,4]]): O == E, so
+        // the power-divergence statistic rounds to a tiny *negative* value. The
+        // Cramér's V effect size must still be a finite 0.0, not NaN (regression
+        // test for the cramers_v radicand clamp).
+        let data = ds(vec![
+            (
+                "x",
+                vec![
+                    0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 1., 1., 1., 1., 1.,
+                ],
+            ),
+            (
+                "y",
+                vec![
+                    0., 0., 0., 0., 1., 1., 1., 1., 0., 0., 0., 0., 1., 1., 1., 1.,
+                ],
+            ),
+        ]);
+        let r = CressieRead::new().test(&data, 0, 1, &[]).unwrap();
+        let effect = r.effect_size.expect("effect size should be present");
+        assert!(
+            effect.is_finite(),
+            "effect size must be finite, got {effect}"
+        );
+        assert!(
+            effect < 1e-9,
+            "balanced independent table -> ~0 effect, got {effect}"
+        );
+    }
+
+    #[test]
     fn meta_is_correct() {
         let m = CressieRead::new().meta();
         assert_eq!(m.name, "cressie_read");

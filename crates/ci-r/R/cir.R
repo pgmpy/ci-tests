@@ -311,6 +311,12 @@ is_independent <- function(test, x, y, z = character(), significance_level = 0.0
 # pcalg adapter
 # ---------------------------------------------------------------------------
 
+# Test names whose decision rule is inverted relative to pcalg's standard
+# convention: they declare independence when p < alpha, not p >= alpha. Mirrors
+# the core `IndependenceRule::PValueLt` tests. Keep in sync if another
+# inverted-rule test is added to the factories above.
+.cir_inverted_rule_tests <- c("pearson_equivalence")
+
 #' Adapt a `cir_test` into a \pkg{pcalg} `indepTest` callback.
 #'
 #' Returns a closure `function(x, y, S, suffStat)` matching the interface
@@ -322,7 +328,10 @@ is_independent <- function(test, x, y, z = character(), significance_level = 0.0
 #' driver. `suffStat` is accepted for interface compatibility and ignored (the
 #' data is already captured in `test`); pass `suffStat = list()`.
 #'
-#' @param test A `cir_test` from one of the factory functions.
+#' @param test A `cir_test` from one of the factory functions. Must be a
+#'   standard null-of-independence test; [pearson_equivalence()] is rejected
+#'   because its inverted decision rule (independence when `p < alpha`) would be
+#'   interpreted backwards by \pkg{pcalg}.
 #' @return A function `(x, y, S, suffStat) -> numeric` p-value.
 #' @examples
 #' \dontrun{
@@ -334,6 +343,23 @@ is_independent <- function(test, x, y, z = character(), significance_level = 0.0
 #' @export
 as_pcalg <- function(test) {
   stopifnot(inherits(test, "cir_test"))
+  # pcalg interprets the returned p-value with the standard convention (remove an
+  # edge / declare independence when p >= alpha). A test whose own rule is
+  # inverted -- independence when p < alpha, i.e. the core's
+  # `IndependenceRule::PValueLt` -- would have every decision silently flipped,
+  # yielding a wrong skeleton/CPDAG with no error. Refuse them.
+  if (test$name %in% .cir_inverted_rule_tests) {
+    stop(sprintf(
+      paste0(
+        "as_pcalg() supports only standard null-of-independence tests; `%s` ",
+        "uses an inverted decision rule (independence when p < alpha), which ",
+        "pcalg would interpret backwards and silently invert every edge ",
+        "decision. Use a standard test such as fisher_z() or ",
+        "pearson_correlation() for constraint-based discovery."
+      ),
+      test$name
+    ), call. = FALSE)
+  }
   cols <- test$dataset$names
   handle <- test$handle
   function(x, y, S, suffStat) {

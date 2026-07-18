@@ -20,13 +20,19 @@ use crate::strategy::{CiResult, DataType, IndependenceRule, TestMeta};
 
 /// Cramér's V = sqrt(stat / (n * (min(kx, ky) - 1))). Returns `None` when the
 /// smaller cardinality is < 2 (V undefined) or there are no rows.
+///
+/// The statistic is mathematically non-negative, but `powf` rounding in the
+/// power-divergence back-end can make it a tiny *negative* value on tables where
+/// observed == expected (e.g. a balanced independent table under Cressie-Read),
+/// which would turn the `sqrt` into `NaN`. Clamp the radicand at 0 so the effect
+/// size is a clean `0.0` there.
 #[allow(clippy::cast_precision_loss)]
 fn cramers_v(statistic: f64, n: usize, kx: usize, ky: usize) -> Option<f64> {
     let k = kx.min(ky);
     if k < 2 || n == 0 {
         return None;
     }
-    Some((statistic / (n as f64 * (k as f64 - 1.0))).sqrt())
+    Some((statistic.max(0.0) / (n as f64 * (k as f64 - 1.0))).sqrt())
 }
 
 /// Survival function `P(χ²_dof > statistic)`, with the degenerate and infinite
