@@ -80,17 +80,10 @@ pub struct TestMeta {
 /// Returns the first violated rule as described above.
 pub fn validate_query(data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result<(), CiError> {
     let n_cols = data.n_cols();
-    let in_range = |idx: usize| {
+    for idx in [x, y].into_iter().chain(z.iter().copied()) {
         if idx >= n_cols {
-            Err(CiError::UnknownColumn(format!("column index {idx}")))
-        } else {
-            Ok(())
+            return Err(CiError::UnknownColumn(format!("column index {idx}")));
         }
-    };
-    in_range(x)?;
-    in_range(y)?;
-    for &zi in z {
-        in_range(zi)?;
     }
     if x == y {
         return Err(CiError::InvalidQuery(format!(

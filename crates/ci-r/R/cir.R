@@ -58,9 +58,8 @@
     as.numeric(as.integer(col))
   } else if (is.character(col)) {
     as.numeric(as.integer(factor(col)))
-  } else if (is.logical(col)) {
-    as.numeric(col)
   } else {
+    # logical and numeric columns both coerce straight to double.
     as.numeric(col)
   }
 }
@@ -400,8 +399,9 @@ ci_test <- function(test, x, y, z = character()) {
     names(parameter) <- "df"
   }
 
-  zlab <- if (length(.cir_as_names(z)) > 0L) {
-    paste0(" | ", paste(.cir_as_names(z), collapse = ", "))
+  znames <- .cir_as_names(z)
+  zlab <- if (length(znames) > 0L) {
+    paste0(" | ", paste(znames, collapse = ", "))
   } else {
     ""
   }

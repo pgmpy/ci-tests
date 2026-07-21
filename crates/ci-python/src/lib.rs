@@ -54,7 +54,7 @@ fn resolve_column(data: &CoreDataset, obj: &Bound<'_, PyAny>) -> PyResult<usize>
         };
         // Allow Python-style negative indexing without lossy isize/usize casts.
         let resolved = if idx < 0 {
-            let back = usize::try_from(-idx).map_err(|_| out_of_range())?;
+            let back = idx.unsigned_abs();
             n_cols.checked_sub(back).ok_or_else(out_of_range)?
         } else {
             usize::try_from(idx).map_err(|_| out_of_range())?
@@ -72,10 +72,9 @@ fn resolve_column(data: &CoreDataset, obj: &Bound<'_, PyAny>) -> PyResult<usize>
 
 /// Resolve a conditioning-set argument: a sequence of names/indices (or `None`).
 fn resolve_z(data: &CoreDataset, z: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<usize>> {
-    let Some(z) = z else { return Ok(Vec::new()) };
-    if z.is_none() {
+    let Some(z) = z.filter(|z| !z.is_none()) else {
         return Ok(Vec::new());
-    }
+    };
     // A bare string would iterate character-by-character, which is never intended.
     if z.is_instance_of::<PyString>() {
         return Err(PyValueError::new_err(
@@ -92,6 +91,21 @@ fn resolve_z(data: &CoreDataset, z: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<u
         indices.push(resolve_column(data, &item)?);
     }
     Ok(indices)
+}
+
+/// Resolve the `x`, `y`, and `z` query arguments to column indices in one shot,
+/// short-circuiting on the first failure (in `x`, `y`, `z` order).
+fn resolve_xyz(
+    data: &CoreDataset,
+    x: &Bound<'_, PyAny>,
+    y: &Bound<'_, PyAny>,
+    z: Option<&Bound<'_, PyAny>>,
+) -> PyResult<(usize, usize, Vec<usize>)> {
+    Ok((
+        resolve_column(data, x)?,
+        resolve_column(data, y)?,
+        resolve_z(data, z)?,
+    ))
 }
 
 /// The numeric outcome of a conditional-independence test.
@@ -360,9 +374,7 @@ macro_rules! ci_test_class {
                 y: &Bound<'_, PyAny>,
                 z: Option<&Bound<'_, PyAny>>,
             ) -> PyResult<PyCiResult> {
-                let xi = resolve_column(&self.data, x)?;
-                let yi = resolve_column(&self.data, y)?;
-                let zi = resolve_z(&self.data, z)?;
+                let (xi, yi, zi) = resolve_xyz(&self.data, x, y, z)?;
                 let inner = &self.inner;
                 let data = &self.data;
                 py.allow_threads(|| inner.test(data.as_ref(), xi, yi, &zi))
@@ -380,9 +392,7 @@ macro_rules! ci_test_class {
                 z: Option<&Bound<'_, PyAny>>,
                 significance_level: f64,
             ) -> PyResult<bool> {
-                let xi = resolve_column(&self.data, x)?;
-                let yi = resolve_column(&self.data, y)?;
-                let zi = resolve_z(&self.data, z)?;
+                let (xi, yi, zi) = resolve_xyz(&self.data, x, y, z)?;
                 let inner = &self.inner;
                 let data = &self.data;
                 py.allow_threads(|| {

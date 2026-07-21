@@ -71,10 +71,11 @@ impl GramCache {
             for j in i..p {
                 let xj = continuous[j];
                 let mj = means[j];
-                let mut acc = 0.0;
-                for r in 0..n {
-                    acc += (xi[r] - mi) * (xj[r] - mj);
-                }
+                let acc: f64 = xi
+                    .iter()
+                    .zip(xj)
+                    .map(|(&vi, &vj)| (vi - mi) * (vj - mj))
+                    .sum();
                 s[i * p + j] = acc;
                 s[j * p + i] = acc;
             }

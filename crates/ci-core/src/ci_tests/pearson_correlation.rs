@@ -41,6 +41,57 @@ fn sum_sq_deviations(v: &[f64]) -> f64 {
     v.iter().map(|&vi| (vi - mean) * (vi - mean)).sum()
 }
 
+/// The "input is constant; Pearson correlation is undefined" error for input
+/// `which` (`"x"` or `"y"`).
+fn constant_input_error(which: &str) -> CiError {
+    CiError::DegenerateData(format!(
+        "input `{which}` is constant; Pearson correlation is undefined"
+    ))
+}
+
+/// Enforce the minimum row count for a (partial) correlation: 3 rows
+/// unconditionally, or `|Z| + 3` when conditioning on `n_z` columns.
+///
+/// # Errors
+///
+/// Returns [`CiError::DegenerateData`] if there are too few rows.
+fn check_row_count(n: usize, n_z: usize) -> Result<(), CiError> {
+    if n_z == 0 {
+        if n < 3 {
+            return Err(CiError::DegenerateData(format!(
+                "need at least 3 rows for correlation, got {n}"
+            )));
+        }
+    } else if n < n_z + 3 {
+        return Err(CiError::DegenerateData(format!(
+            "need at least |Z| + 3 = {} rows, got {n}",
+            n_z + 3
+        )));
+    }
+    Ok(())
+}
+
+/// Reject a post-conditioning residual whose deviation energy is negligible
+/// relative to the original variable's (Z explains essentially all variation).
+///
+/// # Errors
+///
+/// Returns [`CiError::DegenerateData`] if `residual_var <= VARIANCE_REL_EPS *
+/// original_var`.
+fn check_residual_variance(
+    which: &str,
+    residual_var: f64,
+    original_var: f64,
+) -> Result<(), CiError> {
+    if residual_var <= VARIANCE_REL_EPS * original_var {
+        return Err(CiError::DegenerateData(format!(
+            "residual `{which}` is constant after conditioning on Z; \
+             partial correlation is undefined"
+        )));
+    }
+    Ok(())
+}
+
 /// Pearson correlation coefficient of two equal-length slices.
 ///
 /// # Errors
@@ -64,10 +115,7 @@ fn pearson_r(x: &[f64], y: &[f64]) -> Result<f64, CiError> {
     }
 
     if var_x == 0.0 || var_y == 0.0 {
-        let which = if var_x == 0.0 { "x" } else { "y" };
-        return Err(CiError::DegenerateData(format!(
-            "input `{which}` is constant; Pearson correlation is undefined"
-        )));
+        return Err(constant_input_error(if var_x == 0.0 { "x" } else { "y" }));
     }
 
     Ok(covariance / (var_x * var_y).sqrt())
@@ -220,40 +268,20 @@ fn partial_correlation_gram(
     z: &[usize],
 ) -> Result<(f64, usize), CiError> {
     let n_z = z.len();
-    if z.is_empty() {
-        if n < 3 {
-            return Err(CiError::DegenerateData(format!(
-                "need at least 3 rows for correlation, got {n}"
-            )));
-        }
-    } else if n < n_z + 3 {
-        return Err(CiError::DegenerateData(format!(
-            "need at least |Z| + 3 = {} rows, got {n}",
-            n_z + 3
-        )));
-    }
+    check_row_count(n, n_z)?;
 
     let (s_xx, s_yy, a, b, c) = gram.schur_xy_given_z(x, y, z)?;
 
     if z.is_empty() {
         // Mirror `pearson_r`'s constant-input error.
         if s_xx == 0.0 || s_yy == 0.0 {
-            let which = if s_xx == 0.0 { "x" } else { "y" };
-            return Err(CiError::DegenerateData(format!(
-                "input `{which}` is constant; Pearson correlation is undefined"
-            )));
+            return Err(constant_input_error(if s_xx == 0.0 { "x" } else { "y" }));
         }
     } else {
         // Mirror the residual-constant check (the relative eps also catches
         // fp-negative Schur complements and the constant-input case).
-        for (which, residual_var, original_var) in [("x", a, s_xx), ("y", b, s_yy)] {
-            if residual_var <= VARIANCE_REL_EPS * original_var {
-                return Err(CiError::DegenerateData(format!(
-                    "residual `{which}` is constant after conditioning on Z; \
-                     partial correlation is undefined"
-                )));
-            }
-        }
+        check_residual_variance("x", a, s_xx)?;
+        check_residual_variance("y", b, s_yy)?;
     }
 
     let r = c / (a * b).sqrt();
@@ -287,24 +315,14 @@ pub(crate) fn partial_correlation_residual(
     let x_vals = data.continuous(x)?;
     let y_vals = data.continuous(y)?;
     let n = x_vals.len();
+    check_row_count(n, z.len())?;
 
     if z.is_empty() {
-        if n < 3 {
-            return Err(CiError::DegenerateData(format!(
-                "need at least 3 rows for correlation, got {n}"
-            )));
-        }
         let r = pearson_r(x_vals, y_vals)?;
         return Ok((r, n - 2));
     }
 
     let n_z = z.len();
-    if n < n_z + 3 {
-        return Err(CiError::DegenerateData(format!(
-            "need at least |Z| + 3 = {} rows, got {n}",
-            n_z + 3
-        )));
-    }
 
     // Design matrix [1, Z] (n × (n_z + 1)), stored row-major.
     let n_cols = n_z + 1;
@@ -329,15 +347,16 @@ pub(crate) fn partial_correlation_residual(
     // this relative to the *original* variable's deviation energy (the SVD path
     // truncated such residuals to exactly zero; QR leaves ~1e-15 noise). The
     // threshold sits far below any genuine residual ratio in the fixture.
-    for (residual, original, which) in [(&residual_x, x_vals, "x"), (&residual_y, y_vals, "y")] {
-        let original_dev = sum_sq_deviations(original);
-        if sum_sq_deviations(residual) <= VARIANCE_REL_EPS * original_dev {
-            return Err(CiError::DegenerateData(format!(
-                "residual `{which}` is constant after conditioning on Z; \
-                 partial correlation is undefined"
-            )));
-        }
-    }
+    check_residual_variance(
+        "x",
+        sum_sq_deviations(&residual_x),
+        sum_sq_deviations(x_vals),
+    )?;
+    check_residual_variance(
+        "y",
+        sum_sq_deviations(&residual_y),
+        sum_sq_deviations(y_vals),
+    )?;
 
     let r = pearson_r(&residual_x, &residual_y)?;
     Ok((r, n - n_z - 2))
@@ -558,6 +577,21 @@ mod tests {
         let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
         assert!(matches!(
             partial_correlation(&data, 0, 1, &[2, 3]),
+            Err(CiError::Numeric(_))
+        ));
+    }
+
+    #[test]
+    fn residual_path_collinear_z_is_numeric() {
+        // Directly exercise the non-gram residual path's rank-deficient outcome:
+        // collinear Z (z2 = 2*z1) makes the OLS design rank-deficient.
+        let z1 = vec![1., 2., 3., 4., 5., 6.];
+        let z2: Vec<f64> = z1.iter().map(|v| 2.0 * v).collect();
+        let x = vec![0.4, 0.1, 0.8, 0.2, 0.9, 0.3];
+        let y = vec![0.2, 0.7, 0.1, 0.8, 0.3, 0.9];
+        let data = ds(vec![("x", x), ("y", y), ("z1", z1), ("z2", z2)]);
+        assert!(matches!(
+            partial_correlation_residual(&data, 0, 1, &[2, 3]),
             Err(CiError::Numeric(_))
         ));
     }

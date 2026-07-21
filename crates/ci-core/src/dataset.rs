@@ -116,9 +116,9 @@ impl Dataset {
     /// # Errors
     ///
     /// Returns [`CiError::DimensionMismatch`] if the columns do not all share a
-    /// common length.
-    /// Returns [`CiError::MissingData`] if any column (discrete or continuous)
-    /// contains NaN values.
+    /// common length, or if two columns share a name (names must be unique).
+    /// Returns [`CiError::MissingData`] if a discrete column contains NaN, or a
+    /// continuous column contains any non-finite value (NaN or ±inf).
     pub fn from_columns(cols: Vec<(String, ColumnKind, Vec<f64>)>) -> Result<Self, CiError> {
         let n_rows = cols.first().map_or(0, |(_, _, v)| v.len());
         for (name, _, values) in &cols {
@@ -135,7 +135,13 @@ impl Dataset {
         let mut columns = Vec::with_capacity(cols.len());
 
         for (idx, (name, kind, values)) in cols.into_iter().enumerate() {
-            if let Some(row) = values.iter().position(|v| v.is_nan()) {
+            // Discrete columns reject NaN (missing); continuous columns reject any
+            // non-finite value (NaN or ±inf), which would corrupt the Gram path.
+            let bad = match kind {
+                ColumnKind::Continuous => values.iter().position(|v| !v.is_finite()),
+                ColumnKind::Discrete => values.iter().position(|v| v.is_nan()),
+            };
+            if let Some(row) = bad {
                 return Err(CiError::MissingData(format!(
                     "column `{name}` contains NaN/missing values (first at row {row}); \
                      remove or impute before building the Dataset"
@@ -158,7 +164,11 @@ impl Dataset {
                     }
                 }
             };
-            name_to_index.insert(name.clone(), idx);
+            if name_to_index.insert(name.clone(), idx).is_some() {
+                return Err(CiError::DimensionMismatch(format!(
+                    "duplicate column name `{name}`; column names must be unique"
+                )));
+            }
             names.push(name);
             columns.push(column);
         }
@@ -203,13 +213,20 @@ impl Dataset {
     ///
     /// Returns [`CiError::UnknownColumn`] if `index` is out of range, or
     /// [`CiError::WrongColumnKind`] if the column is continuous.
+    /// Borrow the column at `index`, mapping an out-of-range index to
+    /// [`CiError::UnknownColumn`].
+    fn column(&self, index: usize) -> Result<&Column, CiError> {
+        self.columns
+            .get(index)
+            .ok_or_else(|| CiError::UnknownColumn(format!("column index {index}")))
+    }
+
     pub(crate) fn discrete(&self, index: usize) -> Result<(&[usize], usize), CiError> {
-        match self.columns.get(index) {
-            Some(Column::Discrete { codes, cardinality }) => Ok((codes, *cardinality)),
-            Some(Column::Continuous { .. }) => Err(CiError::WrongColumnKind(format!(
+        match self.column(index)? {
+            Column::Discrete { codes, cardinality } => Ok((codes, *cardinality)),
+            Column::Continuous { .. } => Err(CiError::WrongColumnKind(format!(
                 "column {index} is continuous but a discrete column was required"
             ))),
-            None => Err(CiError::UnknownColumn(format!("column index {index}"))),
         }
     }
 
@@ -220,12 +237,11 @@ impl Dataset {
     /// Returns [`CiError::UnknownColumn`] if `index` is out of range, or
     /// [`CiError::WrongColumnKind`] if the column is discrete.
     pub(crate) fn continuous(&self, index: usize) -> Result<&[f64], CiError> {
-        match self.columns.get(index) {
-            Some(Column::Continuous { values }) => Ok(values),
-            Some(Column::Discrete { .. }) => Err(CiError::WrongColumnKind(format!(
+        match self.column(index)? {
+            Column::Continuous { values } => Ok(values),
+            Column::Discrete { .. } => Err(CiError::WrongColumnKind(format!(
                 "column {index} is discrete but a continuous column was required"
             ))),
-            None => Err(CiError::UnknownColumn(format!("column index {index}"))),
         }
     }
 
@@ -233,9 +249,9 @@ impl Dataset {
     /// the dataset has no continuous columns / too many of them (see
     /// [`crate::gram::MAX_GRAM_COLS`]).
     ///
-    /// Under concurrent first access the build may run more than once with
-    /// all but one result discarded (`OnceLock::get_or_init` semantics);
-    /// the stored cache is built exactly once and is deterministic.
+    /// `OnceLock::get_or_init` runs the build exactly once, blocking any
+    /// concurrent callers until it completes; the stored cache is therefore
+    /// built a single time and is deterministic.
     pub(crate) fn gram(&self) -> Option<&GramCache> {
         self.gram.get_or_init(|| GramCache::build(self)).as_ref()
     }
@@ -345,6 +361,29 @@ mod tests {
             assert!(msg.contains("`a`"), "message should name the column: {msg}");
             assert!(msg.contains("row 1"), "message should give the row: {msg}");
         }
+    }
+
+    #[test]
+    fn duplicate_column_names_error() {
+        let err = Dataset::from_columns(vec![
+            ("a".to_string(), ColumnKind::Continuous, vec![1.0, 2.0]),
+            ("a".to_string(), ColumnKind::Continuous, vec![3.0, 4.0]),
+        ])
+        .unwrap_err();
+        assert!(matches!(err, CiError::DimensionMismatch(_)), "{err}");
+        assert!(err.to_string().contains("`a`"));
+    }
+
+    #[test]
+    fn infinite_continuous_value_errors() {
+        let err = Dataset::from_columns(vec![(
+            "a".to_string(),
+            ColumnKind::Continuous,
+            vec![1.0, f64::INFINITY, 2.0],
+        )])
+        .unwrap_err();
+        assert!(matches!(err, CiError::MissingData(_)), "{err}");
+        assert!(err.to_string().contains("row 1"));
     }
 
     #[test]

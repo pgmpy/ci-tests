@@ -21,23 +21,16 @@ pub fn to_r_error(err: CoreError) -> Error {
     reason = "dof is a small degrees-of-freedom count, far below i32::MAX"
 )]
 pub fn result_to_list(result: &CoreResult) -> Robj {
-    let statistic: Robj = match result.statistic {
-        Some(s) => s.into(),
-        None => r!(NULL),
-    };
-    let dof: Robj = match result.dof {
-        Some(d) => (d as i32).into(),
-        None => r!(NULL),
-    };
-    let effect_size: Robj = match result.effect_size {
-        Some(e) => e.into(),
-        None => r!(NULL),
-    };
     list!(
-        statistic = statistic,
+        statistic = opt_or_null(result.statistic),
         p_value = result.p_value,
-        dof = dof,
-        effect_size = effect_size,
+        dof = opt_or_null(result.dof.map(|d| d as i32)),
+        effect_size = opt_or_null(result.effect_size),
     )
     .into()
+}
+
+/// Wrap `Some(v)` as its R scalar and `None` as R `NULL` (not `NA`).
+fn opt_or_null<T: Into<Robj>>(v: Option<T>) -> Robj {
+    v.map_or_else(|| r!(NULL), Into::into)
 }

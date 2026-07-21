@@ -13,7 +13,7 @@ const LAMBDA: f64 = 2.0 / 3.0;
 ///
 /// When `yates` is set, Yates' continuity correction is applied on 2×2
 /// (sub-)tables. Cramér's V is reported as the effect size.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CressieRead {
     /// Whether to apply Yates' continuity correction on 2×2 (sub-)tables.
     pub yates: bool,
@@ -106,6 +106,25 @@ mod tests {
             effect < 1e-9,
             "balanced independent table -> ~0 effect, got {effect}"
         );
+    }
+
+    #[test]
+    fn dependent_table_pins_lambda_and_effect_size() {
+        // 2x3 dependent table (n=27, dof=2, Yates inert) pinning the Cressie-Read
+        // lambda wiring and Cramér's V effect size against scipy references.
+        let x = vec![
+            0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+            1., 1., 1., 1., 1.,
+        ];
+        let y = vec![
+            0., 0., 0., 0., 0., 0., 1., 1., 2., 2., 2., 2., 0., 0., 0., 1., 1., 1., 1., 1., 1., 1.,
+            2., 2., 2., 2., 2.,
+        ];
+        let data = ds(vec![("x", x), ("y", y)]);
+        let r = CressieRead::new().test(&data, 0, 1, &[]).unwrap();
+        assert_eq!(r.dof, Some(2));
+        assert!((r.statistic.unwrap() - 3.629_764_546_5).abs() < 1e-6);
+        assert!((r.effect_size.unwrap() - 0.366_654_774_9).abs() < 1e-6);
     }
 
     #[test]

@@ -132,14 +132,17 @@ impl Dataset {
     fn columns(&self, names: &Strings) -> Result<Vec<usize>> {
         names.iter().map(|n| self.column(n.as_ref())).collect()
     }
+
+    /// Resolve `x`, `y`, and the conditioning names `z` to 0-based indices.
+    fn resolve(&self, x: &str, y: &str, z: &Strings) -> Result<(usize, usize, Vec<usize>)> {
+        Ok((self.column(x)?, self.column(y)?, self.columns(z)?))
+    }
 }
 
 /// Run an inner test for `x ⟂ y | z` (names) against `data`, returning the
 /// uniform result list. Shared by every test handle's `run_test`.
 fn run_inner(test: &dyn CITest, data: &Dataset, x: &str, y: &str, z: &Strings) -> Result<Robj> {
-    let xi = data.column(x)?;
-    let yi = data.column(y)?;
-    let zi = data.columns(z)?;
+    let (xi, yi, zi) = data.resolve(x, y, z)?;
     let result: CoreResult = test.test(&data.inner, xi, yi, &zi).map_err(to_r_error)?;
     Ok(result_to_list(&result))
 }
@@ -154,9 +157,7 @@ fn is_independent_inner(
     z: &Strings,
     significance_level: f64,
 ) -> Result<bool> {
-    let xi = data.column(x)?;
-    let yi = data.column(y)?;
-    let zi = data.columns(z)?;
+    let (xi, yi, zi) = data.resolve(x, y, z)?;
     test.is_independent(&data.inner, xi, yi, &zi, significance_level)
         .map_err(to_r_error)
 }

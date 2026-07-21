@@ -36,6 +36,13 @@ impl CITest for PearsonEquivalence {
         y: usize,
         z: &[usize],
     ) -> Result<CiResult, CiError> {
+        if !(self.delta_threshold > 0.0 && self.delta_threshold < 1.0) {
+            return Err(CiError::DegenerateData(format!(
+                "delta_threshold must be in (0, 1), got {}",
+                self.delta_threshold
+            )));
+        }
+
         let n = data.continuous(x)?.len();
         let n_z = z.len();
 
@@ -45,13 +52,8 @@ impl CITest for PearsonEquivalence {
         let z_rho = rho.atanh();
         let z_delta = self.delta_threshold.atanh();
 
-        // c = sqrt(n - |Z| - 3); error if the radicand is negative.
-        if n < n_z + 3 {
-            return Err(CiError::DegenerateData(format!(
-                "need at least |Z| + 3 = {} rows for the equivalence test, got {n}",
-                n_z + 3
-            )));
-        }
+        // partial_correlation guarantees n >= |Z| + 3, so the radicand is >= 0
+        // (matching FisherZ, which relies on the same invariant).
         #[allow(clippy::cast_precision_loss)]
         let c = ((n - n_z - 3) as f64).sqrt();
 
@@ -116,6 +118,51 @@ mod tests {
         // statistic is atanh(rho); effect_size is |rho|.
         let rho = r.statistic.unwrap().tanh();
         assert!((r.effect_size.unwrap() - rho.abs()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn out_of_range_delta_errors() {
+        // delta_threshold must lie in (0, 1); 1.5 is rejected before any compute.
+        let data = ds(vec![
+            ("x", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+            ("y", vec![2.0, 1.0, 4.0, 3.0, 6.0, 5.0]),
+        ]);
+        assert!(matches!(
+            PearsonEquivalence::new(1.5).test(&data, 0, 1, &[]),
+            Err(CiError::DegenerateData(_))
+        ));
+    }
+
+    #[test]
+    fn near_zero_correlation_declares_independence() {
+        // Exactly-zero correlation by construction: each x value pairs with +1
+        // and -1 in y, so the covariance is 0. With delta 0.2 and n = 100 the
+        // TOST p-value falls below 0.05, so PValueLt declares independence.
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+        for i in 0..50 {
+            x.push(f64::from(i));
+            y.push(1.0);
+            x.push(f64::from(i));
+            y.push(-1.0);
+        }
+        let data = ds(vec![("x", x), ("y", y)]);
+        assert!(PearsonEquivalence::new(0.2)
+            .is_independent(&data, 0, 1, &[], 0.05)
+            .unwrap());
+    }
+
+    #[test]
+    fn strong_correlation_not_independent_under_small_delta() {
+        // A near-perfect correlation with a tiny equivalence margin: the TOST
+        // p-value is large, so PValueLt does not declare independence.
+        let data = ds(vec![
+            ("x", vec![1., 2., 3., 4., 5.]),
+            ("y", vec![2., 4.1, 5.9, 8.2, 9.8]),
+        ]);
+        assert!(!PearsonEquivalence::new(0.05)
+            .is_independent(&data, 0, 1, &[], 0.05)
+            .unwrap());
     }
 
     #[test]

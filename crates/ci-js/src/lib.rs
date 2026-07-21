@@ -120,11 +120,8 @@ fn extract_values(name: &str, kind: ColumnKind, values: &JsValue) -> Result<Vec<
             )));
         }
         let mut lookup: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-        for i in 0..len {
-            let Some(s) = arr
-                .get(u32::try_from(i).expect("array length fits u32"))
-                .as_string()
-            else {
+        for (i, v) in arr.iter().enumerate() {
+            let Some(s) = v.as_string() else {
                 return Err(js_error(&format!(
                     "column {name:?}: mixed string/number values at index {i}"
                 )));
@@ -134,8 +131,7 @@ fn extract_values(name: &str, kind: ColumnKind, values: &JsValue) -> Result<Vec<
             out.push(*lookup.entry(s).or_insert(next));
         }
     } else {
-        for i in 0..len {
-            let v = arr.get(u32::try_from(i).expect("array length fits u32"));
+        for (i, v) in arr.iter().enumerate() {
             let Some(num) = v.as_f64() else {
                 let hint = if v.as_string().is_some() {
                     "mixed string/number values"
@@ -174,15 +170,15 @@ fn dataset_from_value(value: &JsValue) -> Result<CoreDataset, JsValue> {
             .as_string()
             .ok_or_else(|| js_error("column names must be strings"))?;
         let spec = pair.get(1);
-        let kind_value = js_sys::Reflect::get(&spec, &JsValue::from_str("kind"))
-            .map_err(|_| js_error(&format!("column {name:?} must be {{ kind, values }}")))?;
-        let kind_str = kind_value
+        let field = |key: &str| {
+            js_sys::Reflect::get(&spec, &JsValue::from_str(key))
+                .map_err(|_| js_error(&format!("column {name:?} must be {{ kind, values }}")))
+        };
+        let kind_str = field("kind")?
             .as_string()
             .ok_or_else(|| js_error(&format!("column {name:?}: kind must be a string")))?;
         let kind = parse_kind(&kind_str)?;
-        let values_value = js_sys::Reflect::get(&spec, &JsValue::from_str("values"))
-            .map_err(|_| js_error(&format!("column {name:?} must be {{ kind, values }}")))?;
-        let values = extract_values(&name, kind, &values_value)?;
+        let values = extract_values(&name, kind, &field("values")?)?;
         cols.push((name, kind, values));
     }
     CoreDataset::from_columns(cols).map_err(|e| to_js_error(&e))
@@ -276,6 +272,21 @@ fn resolve_column(data: &CoreDataset, name: &str) -> Result<usize, JsValue> {
 /// Resolve a conditioning-set argument: a JS array of column names.
 fn resolve_z(data: &CoreDataset, z: &[String]) -> Result<Vec<usize>, JsValue> {
     z.iter().map(|name| resolve_column(data, name)).collect()
+}
+
+/// Resolve the `x`, `y`, and `z` column references of a query in one step,
+/// short-circuiting on the first unknown name (x, then y, then z).
+fn resolve_xyz(
+    data: &CoreDataset,
+    x: &str,
+    y: &str,
+    z: &[String],
+) -> Result<(usize, usize, Vec<usize>), JsValue> {
+    Ok((
+        resolve_column(data, x)?,
+        resolve_column(data, y)?,
+        resolve_z(data, z)?,
+    ))
 }
 
 /// Convert a core [`CoreResult`] into a plain JS object
@@ -404,27 +415,31 @@ macro_rules! ci_test_class {
             /// fields). `x`/`y` are column names; `z` is an array of names.
             #[wasm_bindgen(js_name = runTest)]
             pub fn run_test(&self, x: &str, y: &str, z: Vec<String>) -> Result<JsValue, JsValue> {
-                let xi = resolve_column(&self.data, x)?;
-                let yi = resolve_column(&self.data, y)?;
-                let zi = resolve_z(&self.data, &z)?;
+                let (xi, yi, zi) = resolve_xyz(&self.data, x, y, &z)?;
                 self.inner
                     .test(&self.data, xi, yi, &zi)
                     .map(|r| result_to_js(&r))
                     .map_err(|e| to_js_error(&e))
             }
 
-            /// Decide independence at `significanceLevel` using the test's rule.
+            /// Decide independence at `significanceLevel` (default `0.05` when
+            /// omitted, matching the Python binding) using the test's rule.
+            /// Throws if `significanceLevel` is not a finite number.
             #[wasm_bindgen(js_name = isIndependent)]
             pub fn is_independent(
                 &self,
                 x: &str,
                 y: &str,
                 z: Vec<String>,
-                significance_level: f64,
+                significance_level: Option<f64>,
             ) -> Result<bool, JsValue> {
-                let xi = resolve_column(&self.data, x)?;
-                let yi = resolve_column(&self.data, y)?;
-                let zi = resolve_z(&self.data, &z)?;
+                let significance_level = significance_level.unwrap_or(0.05);
+                if !significance_level.is_finite() {
+                    return Err(js_error(&format!(
+                        "significanceLevel must be a finite number, got {significance_level}"
+                    )));
+                }
+                let (xi, yi, zi) = resolve_xyz(&self.data, x, y, &z)?;
                 self.inner
                     .is_independent(&self.data, xi, yi, &zi, significance_level)
                     .map_err(|e| to_js_error(&e))

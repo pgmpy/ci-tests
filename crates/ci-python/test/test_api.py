@@ -56,6 +56,41 @@ def test_result_fields_present_for_discrete() -> None:
     assert isinstance(res.dof, int)
 
 
+def test_effect_size_present_for_discrete_and_none_when_undefined() -> None:
+    # Cramér's V is defined (a float) for a discrete test on 2+-level columns.
+    res = ChiSquared(_discrete_data()).run_test("A", "B")
+    assert isinstance(res.effect_size, float)
+    # A single-level (constant) column has cardinality 1, so Cramér's V is
+    # undefined and the core returns None for effect_size (statistic collapses
+    # to 0, dof 0, p-value 1) rather than erroring.
+    const_data = Dataset(
+        {
+            "A": ("discrete", np.array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])),
+            "K": ("discrete", np.zeros(6)),
+        }
+    )
+    res_none = ChiSquared(const_data).run_test("A", "K")
+    assert res_none.effect_size is None
+
+
+def test_negative_index_matches_name_resolution() -> None:
+    # Python-style negative indices resolve identically to resolution by name:
+    # -1 -> last column ("C"), -2 -> second-to-last ("B").
+    chi = ChiSquared(_discrete_data())
+    by_negative = chi.run_test(-1, -2)
+    by_name = chi.run_test("C", "B")
+    assert by_negative.statistic == pytest.approx(by_name.statistic)
+    assert by_negative.p_value == pytest.approx(by_name.p_value)
+    assert by_negative.dof == by_name.dof
+
+
+def test_bare_string_z_raises_value_error() -> None:
+    # A bare string as z must be rejected, not iterated character-by-character.
+    chi = ChiSquared(_discrete_data())
+    with pytest.raises(ValueError, match="not a single string"):
+        chi.run_test("A", "B", "C")
+
+
 def test_z_defaults_to_empty() -> None:
     chi = ChiSquared(_discrete_data())
     assert chi.run_test("A", "B").p_value == pytest.approx(chi.run_test("A", "B", []).p_value)

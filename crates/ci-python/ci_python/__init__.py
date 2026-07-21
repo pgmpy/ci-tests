@@ -58,18 +58,13 @@ __all__ = [
 def _is_numpy_numeric(dtype: Any) -> bool:  # noqa: ANN401
     """Return True iff *dtype* is a numpy numeric (number or bool) dtype.
 
-    pandas extension dtypes (e.g. ``StringDtype``, ``ArrowDtype``) are not
-    numpy dtypes; ``np.issubdtype`` raises ``TypeError`` for them. This helper
-    swallows that error and returns ``False``.
+    Delegates to :func:`_safe_issubdtype`, which returns ``False`` (rather than
+    raising ``TypeError``) for pandas extension dtypes such as ``StringDtype``
+    or ``ArrowDtype`` that numpy cannot interpret.
     """
     import numpy as np
 
-    try:
-        return bool(
-            np.issubdtype(dtype, np.number) or np.issubdtype(dtype, np.bool_)
-        )
-    except TypeError:
-        return False
+    return _safe_issubdtype(dtype, np.number) or _safe_issubdtype(dtype, np.bool_)
 
 
 def _safe_issubdtype(dtype: Any, base: Any) -> bool:  # noqa: ANN401
