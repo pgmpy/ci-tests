@@ -9,7 +9,7 @@ name: Rust CI
 # (ci_python / cir / ci_js) each need their own non-cargo toolchain (maturin,
 # rextendr/R, wasm-pack) and are covered by python.yml / r.yml / js.yml. This
 # workflow builds and gates only the pure-Rust core crate (ci_core), whose tests
-# include the 73-case shared golden parity fixture.
+# include the 80-case shared golden parity fixture.
 
 on:
   push:
@@ -97,7 +97,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # Verified locally: `cargo test -p ci_core` (includes the 73-case golden
+      # Verified locally: `cargo test -p ci_core` (includes the 80-case golden
       # parity test in crates/ci-core/tests/golden.rs).
       - name: Build
         run: cargo build -p ci_core --verbose

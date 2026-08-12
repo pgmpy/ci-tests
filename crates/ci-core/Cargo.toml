@@ -16,8 +16,6 @@ statrs = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
-criterion = { workspace = true }
-proptest = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

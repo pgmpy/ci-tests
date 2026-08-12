@@ -162,8 +162,10 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
 
 - **Uniform result.** Every `run_test(X, Y, Z)` returns the same `CiResult`: `statistic`,
   `p_value`, `dof`, and `effect_size`. Fields a test does not define are absent
-  (`None` / `NULL` / `null`) — e.g. continuous tests report no `dof`. The discrete tests
-  report Cramér's V and the continuous tests the (partial) correlation as `effect_size`.
+  (`None` / `NULL` / `null`). Pearson correlation reports
+  `dof = n - |Z| - 2`, while Fisher-Z and Pearson equivalence report no degrees of freedom.
+  The discrete tests report Cramér's V and the continuous tests the (partial) correlation as
+  `effect_size`.
 - **Independence decision.** `significance_level` (α) is **not** baked into the test; it is
   passed to `is_independent(X, Y, Z, significance_level)`, which applies that test's own rule
   from its metadata — the normal `p ≥ α` for most tests and the inverted `p < α` for the
@@ -172,7 +174,8 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
   For conditional discrete tests the statistic is summed over the strata defined by `Z`; for
   continuous tests the partial correlation is derived from a lazily cached covariance matrix
   (O(|Z|³) per query after the first continuous test; falls back to per-query regression for
-  datasets with more than 2048 continuous columns), with `dof = n − |Z| − 2`.
+  datasets with more than 2048 continuous columns). Pearson correlation reports
+  `dof = n - |Z| - 2`; Fisher-Z and Pearson equivalence have no degrees of freedom.
 - **Missing data.** NaN (Python/JS) and NA (R) are rejected when the dataset is bound — drop
   or impute first. Discrete columns accept strings everywhere (factorized to integer codes
   internally).

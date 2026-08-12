@@ -73,7 +73,6 @@ Conditional-Independence-Testing/
 │   ├── ci-r/              # R bindings (extendr); R package name is `cir`
 │   └── ci-js/             # JavaScript/WASM bindings (wasm-pack)
 ├── tests/fixtures/        # Shared golden.json + generate_golden.py (cross-language parity)
-├── benchmarks/            # Value-parity and runtime benchmarks
 ├── docs/                  # API examples and design docs
 └── .github/               # CI/CD workflows (one per language)
 ```
@@ -253,11 +252,19 @@ the cross-language numeric parity gate:
 - R: `crates/ci-r/tests/testthat/test-golden.R`
 - JavaScript: `crates/ci-js/tests/golden.test.js`
 
-If you change a statistic or add a test, regenerate the fixture and re-run every suite:
+If you change a statistic or add a test, install the pinned independent-generator dependencies,
+regenerate the fixture, and verify that its committed bytes are current:
 
 ```bash
-python tests/fixtures/generate_golden.py    # requires numpy + scipy
+python -m pip install -r tests/fixtures/requirements.txt
+python tests/fixtures/generate_golden.py
+python tests/fixtures/generate_golden.py --check
+python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /path/to/pgmpy
 ```
+
+The final command is an optional comparison against a local pgmpy checkout; it does not
+participate in fixture generation. Pearson correlation reports `dof = n - |Z| - 2`, while
+Fisher-Z and Pearson equivalence report no degrees of freedom.
 
 ### Rust Tests
 ```bash
