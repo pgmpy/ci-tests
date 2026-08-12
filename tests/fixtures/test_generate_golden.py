@@ -102,6 +102,15 @@ def test_validation_rejects_unknown_query_columns() -> None:
         generator.validate_cases(cases)
 
 
+def test_validation_rejects_mismatched_column_lengths() -> None:
+    generator = load_generator()
+    cases = deepcopy(generator.build_cases())
+    cases[0]["columns"]["X"]["values"].pop()
+
+    with pytest.raises(ValueError, match="column lengths differ"):
+        generator.validate_cases(cases)
+
+
 def test_render_cases_is_strict_and_deterministic() -> None:
     generator = load_generator()
     cases = generator.build_cases()
