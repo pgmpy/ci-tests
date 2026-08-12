@@ -56,7 +56,7 @@ chi.is_independent("A", "C", ["B"], significance_level=0.05)   # -> bool (indepe
 # Continuous Pearson equivalence (TOST); per-test config is constructor-only.
 eqv = PearsonEquivalence(data, delta_threshold=0.1)
 res = eqv.run_test("X", "Y", ["Z"])
-print(res.statistic, res.p_value, res.effect_size)  # res.dof is None for continuous tests
+print(res.statistic, res.p_value, res.effect_size)  # Pearson equivalence has no degrees of freedom
 eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)   # -> bool (independent ⇔ p < α)
 ```
 
@@ -97,7 +97,7 @@ is_independent(chi, "A", "C", c("B"), significance_level = 0.05)   # -> logical 
 # Continuous Pearson equivalence (TOST); config is constructor-only.
 eqv <- pearson_equivalence(df, delta_threshold = 0.1)
 res <- run_test(eqv, "X", "Y", c("Z"))
-c(res$statistic, res$p_value)                       # res$dof is NULL for continuous tests
+c(res$statistic, res$p_value)                       # Pearson equivalence has no degrees of freedom
 is_independent(eqv, "X", "Y", c("Z"), significance_level = 0.05)   # -> logical (p < alpha)
 
 # Any test adapts to pcalg's indepTest(x, y, S, suffStat) interface:
