@@ -18,6 +18,7 @@ from typing import Any
 
 DEFAULT_GOLDEN = Path(__file__).with_name("golden.json")
 DEFAULT_TOLERANCE = 1e-7
+MISSING = object()
 DISCRETE_TESTS = {
     "chi_squared",
     "log_likelihood",
@@ -81,7 +82,7 @@ def compare_fields(
     errors: list[str] = []
     for field, expected_value in expected.items():
         actual_value = actual[field]
-        if field == "dof" and actual_value is None:
+        if field == "dof" and actual_value is MISSING:
             continue
         if not _fields_match(expected_value, actual_value, tolerance):
             errors.append(
@@ -141,7 +142,7 @@ def _compare_case_result(
     actual = {
         "statistic": test.statistic_,
         "p_value": test.p_value_,
-        "dof": getattr(test, "dof_", None),
+        "dof": getattr(test, "dof_", MISSING),
         "effect_size": test.effect_size_,
     }
     return compare_actual_fields(case, actual, tolerance)

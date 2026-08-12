@@ -63,13 +63,52 @@ def test_missing_pgmpy_dof_is_not_compared() -> None:
             actual={
                 "statistic": 0.0,
                 "p_value": 1.0,
-                "dof": None,
+                "dof": checker.MISSING,
                 "effect_size": 0.0,
             },
             tolerance=1e-7,
         )
         == []
     )
+
+
+def test_integration_boundary_compares_present_none_dof() -> None:
+    checker = load_checker()
+
+    class FakeFisherZ:
+        def __init__(self, data: object) -> None:
+            self.data = data
+            self.dof_ = None
+
+        def run_test(self, X: str, Y: str, Z: list[str]) -> None:
+            self.statistic_ = 0.0
+            self.p_value_ = 1.0
+            self.effect_size_ = 0.0
+
+    fake_pgmpy = ModuleType("fake_pgmpy")
+    fake_pgmpy.FisherZ = FakeFisherZ
+    case = {
+        "id": "fisher-z-present-none-dof",
+        "test": "fisher_z",
+        "params": {},
+        "columns": {
+            "X": {"values": [0.0, 1.0]},
+            "Y": {"values": [0.0, 1.0]},
+        },
+        "x": "X",
+        "y": "Y",
+        "z": [],
+        "expected": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "dof": 14,
+            "effect_size": 0.0,
+        },
+    }
+
+    assert checker.compare_case(case, fake_pgmpy, 1e-7) == [
+        "fisher-z-present-none-dof: dof expected 14, got None"
+    ]
 
 
 def test_pgmpy_numeric_dof_is_compared_when_fixture_expects_null() -> None:
