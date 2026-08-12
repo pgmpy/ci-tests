@@ -69,7 +69,8 @@ chi.is_independent("A", "B", ["C"], significance_level=0.05)   # -> bool (p >= a
 
 # Continuous Fisher-Z and equivalence (TOST): every query column is continuous.
 fz = FisherZ(data)
-fz.run_test("X", "Y", ["Z"])              # res.dof is None
+fz_res = fz.run_test("X", "Y", ["Z"])
+assert fz_res.dof is None
 eqv = PearsonEquivalence(data, delta_threshold=0.1)
 res = eqv.run_test("X", "Y", ["Z"])        # res.dof is None
 eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)  # -> bool (p < alpha)
