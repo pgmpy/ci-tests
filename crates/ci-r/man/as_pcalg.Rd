@@ -7,7 +7,10 @@
 as_pcalg(test)
 }
 \arguments{
-\item{test}{A \code{cir_test} from one of the factory functions.}
+\item{test}{A \code{cir_test} from one of the factory functions. Must be a
+standard null-of-independence test; \code{\link[=pearson_equivalence]{pearson_equivalence()}} is rejected
+because its inverted decision rule (independence when \code{p < alpha}) would be
+interpreted backwards by \pkg{pcalg}.}
 }
 \value{
 A function \verb{(x, y, S, suffStat) -> numeric} p-value.

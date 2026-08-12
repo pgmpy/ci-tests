@@ -244,8 +244,9 @@ The file `tests/fixtures/golden.json` (at the repository root) holds reference v
 from scipy / standard references by `tests/fixtures/generate_golden.py` — for each case: the
 test name, its params (`yates` / `delta_threshold`), the columns (with kinds), `X` / `Y` / `Z`,
 and the expected `statistic` / `p_value` / `dof` / `effect_size`. **Every** language test suite
-reads this same fixture and asserts its binding reproduces the values (within `1e-7`), so it is
-the cross-language numeric parity gate:
+asserts its binding reproduces these values (within `1e-7`), so it is the cross-language numeric
+parity gate. R reads a byte-identical package-local copy so a built source archive remains
+self-contained:
 
 - Rust: `crates/ci-core/tests/golden.rs`
 - Python: `crates/ci-python/test/test_golden.py`
@@ -259,6 +260,8 @@ regenerate the fixture, and verify that its committed bytes are current:
 python -m pip install -r tests/fixtures/requirements.txt
 python tests/fixtures/generate_golden.py
 python tests/fixtures/generate_golden.py --check
+python crates/ci-r/tools/sync_package_assets.py --sync
+python crates/ci-r/tools/sync_package_assets.py --check
 python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /path/to/pgmpy
 ```
 
@@ -345,7 +348,7 @@ npm test    # vitest, includes golden.test.js
 ### Test Organisation
 
 - **Unit tests**: Inline in each source file, inside `#[cfg(test)] mod tests { }`
-- **Golden parity tests**: one per language, all reading `tests/fixtures/golden.json`
+- **Golden parity tests**: one per language, with R reading its synchronized package copy
 - **Python integration tests**: [`crates/ci-python/test`](crates/ci-python/test)
 - **R tests**: `crates/ci-r/tests/testthat/`
 - **JavaScript tests**: [`crates/ci-js/tests`](crates/ci-js/tests)

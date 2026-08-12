@@ -1,23 +1,15 @@
 name: R CI
 
-# NOTE: The build/test commands below were verified by running them locally
-# against this branch. They are NOT exercised on GitHub Actions until this
-# workflow runs there, so the exact runner setup may still need tweaks.
-#
 # Toolchain: R + rextendr (which compiles the embedded Rust crate), devtools,
-# testthat, and jsonlite (the golden suite reads tests/fixtures/golden.json via
-# jsonlite::fromJSON). rextendr::document() regenerates the extendr wrappers,
-# then devtools::test() runs the package suite (469 tests, including the 80-case
-# golden parity gate).
+# testthat, and jsonlite. rextendr::document() regenerates the extendr wrappers,
+# then the workflow tests and checks the built source package archive.
 #
 # We use r-lib/actions/setup-r (a standard CRAN R), which does NOT require the
 # LD_LIBRARY_PATH workaround. (A *conda* R does: there you must export
 # LD_LIBRARY_PATH=$(Rscript -e 'cat(R.home("lib"))') so the embedded Rust can
 # link libR — not needed with the standard action below.)
 #
-# Commands are run from the repo root with the package path passed explicitly
-# (rextendr::document("crates/ci-r") / devtools::test("crates/ci-r")) so the
-# golden suite reliably resolves the repo-root fixture.
+# Commands are run from the repo root with the package path passed explicitly.
 
 on:
   push:
@@ -92,10 +84,15 @@ jobs:
         with:
           r-version: release
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust MSRV
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.81.0
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Check packaged source and fixture drift
+        run: python crates/ci-r/tools/sync_package_assets.py --check
 
       # jsonlite is declared in Suggests for the golden suite; install it
       # alongside devtools/rextendr/testthat.
@@ -105,13 +102,28 @@ jobs:
           working-directory: crates/ci-r
           extra-packages: any::devtools, any::rextendr, any::testthat, any::jsonlite
 
-      # Verified locally: regenerate the extendr wrappers (compiles the Rust).
       - name: Generate Makevars and R wrappers
         run: rextendr::document("crates/ci-r")
         shell: Rscript {0}
 
-      # Verified locally: `devtools::test("crates/ci-r")` -> 469 tests incl. the
-      # 80-case golden parity gate (tests/fixtures/golden.json).
       - name: Run R tests
         run: devtools::test("crates/ci-r", reporter = "summary")
+        shell: Rscript {0}
+
+      - name: Build and check source package
+        run: |
+          archive <- devtools::build(
+            "crates/ci-r",
+            path = tempdir(),
+            manual = FALSE,
+            vignettes = FALSE
+          )
+          message("Checking built source archive: ", archive)
+          devtools::check_built(
+            archive,
+            cran = FALSE,
+            manual = FALSE,
+            args = "--no-manual",
+            error_on = "warning"
+          )
         shell: Rscript {0}

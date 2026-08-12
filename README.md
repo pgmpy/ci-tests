@@ -203,9 +203,11 @@ crates/ci-js       JavaScript / WASM (wasm-pack)
 All three bindings are thin wrappers that depend only on `ci-core`, so the statistics live in a
 single place; each binding maps its idiomatic input (a pandas/`data.frame`/typed columns) onto
 the core `Dataset` and forwards `run_test` / `is_independent`. The Rust core can also be used
-directly as a crate. A shared golden fixture (`tests/fixtures/golden.json`) is consumed by every
-language's test suite as the cross-language numeric parity gate. Full API documentation is
-published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
+directly as a crate. A shared golden fixture (`tests/fixtures/golden.json`) is the canonical
+cross-language numeric parity gate. The R source package carries mechanically synchronized
+copies of that fixture and `ci-core` so its built archive can be checked outside the monorepo;
+`python crates/ci-r/tools/sync_package_assets.py --check` rejects drift. Full API documentation
+is published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup,
 coding standards, and how to add a new test. Each crate uses its own toolchain, so checks run

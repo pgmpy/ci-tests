@@ -49,7 +49,10 @@ test_that("run_test returns the uniform list for discrete tests", {
 
 test_that("z defaults to an empty conditioning set", {
   chi <- chi_squared(dataset(discrete_df()))
-  expect_equal(run_test(chi, "A", "B")$p_value, run_test(chi, "A", "B", character())$p_value)
+  expect_equal(
+    run_test(chi, "A", "B")$p_value,
+    run_test(chi, "A", "B", character())$p_value
+  )
 })
 
 test_that("conditioning on a name works", {
@@ -63,6 +66,16 @@ test_that("is_independent returns a single logical", {
   out <- is_independent(chi, "A", "C", c("B"), significance_level = 0.05)
   expect_true(is.logical(out))
   expect_length(out, 1L)
+})
+
+test_that("is_independent rejects non-finite significance levels", {
+  chi <- chi_squared(dataset(discrete_df()))
+  for (level in c(NaN, Inf, -Inf)) {
+    expect_error(
+      is_independent(chi, "A", "B", significance_level = level),
+      "significance level must be finite"
+    )
+  }
 })
 
 test_that("pearson_equivalence has NULL dof and the inverted rule", {
@@ -81,8 +94,12 @@ test_that("the standard rule is the non-inverted direction", {
   chi <- chi_squared(dataset(discrete_df()))
   # Standard rule: independent <=> p >= alpha. alpha = 0 => always independent;
   # alpha = 1 => never (finite p < 1).
-  expect_true(is_independent(chi, "A", "B", character(), significance_level = 0))
-  expect_false(is_independent(chi, "A", "B", character(), significance_level = 1))
+  expect_true(
+    is_independent(chi, "A", "B", character(), significance_level = 0)
+  )
+  expect_false(
+    is_independent(chi, "A", "B", character(), significance_level = 1)
+  )
 })
 
 test_that("pearson_correlation takes no config", {
@@ -109,7 +126,8 @@ test_that("factor and character columns are coded to discrete", {
   expect_equal(unname(data$kinds), c("discrete", "discrete"))
   res <- run_test(chi_squared(data), "F", "G")
   expect_true(is.numeric(res$statistic))
-  expect_equal(res$dof, 2L) # (3-1)*(2-1)
+  # A three-by-two table has (3 - 1) * (2 - 1) degrees of freedom.
+  expect_equal(res$dof, 2L)
 })
 
 test_that("a dataset can be shared across tests", {
@@ -168,7 +186,11 @@ test_that("fisher_z runs and reports no dof", {
   expect_true(res$p_value >= 0 && res$p_value <= 1)
   # statistic = sqrt(n - |Z| - 3) * atanh(r)
   pc <- run_test(pearson_correlation(dataset(df)), "X", "Y", c("Z"))
-  expect_equal(res$statistic, sqrt(n - 1 - 3) * atanh(pc$statistic), tolerance = 1e-9)
+  expect_equal(
+    res$statistic,
+    sqrt(n - 1 - 3) * atanh(pc$statistic),
+    tolerance = 1e-9
+  )
 })
 
 test_that("NA values error at dataset construction", {

@@ -424,7 +424,7 @@ macro_rules! ci_test_class {
 
             /// Decide independence at `significanceLevel` (default `0.05` when
             /// omitted, matching the Python binding) using the test's rule.
-            /// Throws if `significanceLevel` is not a finite number.
+            /// The core rejects a non-finite `significanceLevel`.
             #[wasm_bindgen(js_name = isIndependent)]
             pub fn is_independent(
                 &self,
@@ -434,11 +434,6 @@ macro_rules! ci_test_class {
                 significance_level: Option<f64>,
             ) -> Result<bool, JsValue> {
                 let significance_level = significance_level.unwrap_or(0.05);
-                if !significance_level.is_finite() {
-                    return Err(js_error(&format!(
-                        "significanceLevel must be a finite number, got {significance_level}"
-                    )));
-                }
                 let (xi, yi, zi) = resolve_xyz(&self.data, x, y, &z)?;
                 self.inner
                     .is_independent(&self.data, xi, yi, &zi, significance_level)

@@ -1,6 +1,6 @@
 # Golden parity test for the data-bound R bindings.
 #
-# Loads the shared cross-language fixture `tests/fixtures/golden.json` and, for
+# Loads the packaged copy of the shared cross-language golden fixture and, for
 # each of the eight tests, builds a `dataset()` from the case's columns,
 # constructs the test with the case's parameters, runs it, and asserts that
 # `statistic` / `p_value` / `dof` / `effect_size` match the recorded `expected`
@@ -9,11 +9,11 @@
 
 library(cir)
 
-TOL <- 1e-7
-EXPECTED_CASE_COUNT <- 80L
+tol <- 1e-7
+expected_case_count <- 80L
 
 # Map the fixture's stable test name to its binding factory function.
-TEST_FACTORIES <- list(
+test_factories <- list(
   chi_squared = chi_squared,
   log_likelihood = log_likelihood,
   cressie_read = cressie_read,
@@ -24,27 +24,8 @@ TEST_FACTORIES <- list(
   pearson_equivalence = pearson_equivalence
 )
 
-# Locate the repo-root fixture. Under `devtools::test()`, `test_path()` points
-# at this directory (crates/ci-r/tests/testthat), so the repo root is four
-# levels up; fall back to walking up from the working directory.
 find_golden <- function() {
-  candidate <- testthat::test_path("..", "..", "..", "..", "tests", "fixtures", "golden.json")
-  if (file.exists(candidate)) {
-    return(normalizePath(candidate))
-  }
-  dir <- normalizePath(getwd())
-  repeat {
-    candidate <- file.path(dir, "tests", "fixtures", "golden.json")
-    if (file.exists(candidate)) {
-      return(candidate)
-    }
-    parent <- dirname(dir)
-    if (identical(parent, dir)) {
-      break
-    }
-    dir <- parent
-  }
-  stop("could not locate tests/fixtures/golden.json")
+  testthat::test_path("fixtures", "golden.json")
 }
 
 load_cases <- function() {
@@ -68,7 +49,7 @@ build_dataset <- function(columns) {
 }
 
 construct_test <- function(name, data, params) {
-  factory <- TEST_FACTORIES[[name]]
+  factory <- test_factories[[name]]
   if (name %in% c("pearson_correlation", "fisher_z")) {
     factory(data)
   } else if (name == "pearson_equivalence") {
@@ -108,25 +89,25 @@ assert_close <- function(actual, expected, field, case_id) {
     return(invisible())
   }
   expect_equal(act, exp,
-    tolerance = TOL,
+    tolerance = tol,
     label = sprintf("%s: %s got %s, expected %s", case_id, field, act, exp)
   )
 }
 
-GOLDEN_CASES <- load_cases()
+golden_cases <- load_cases()
 
 test_that("golden fixture covers exactly the expected cases", {
-  expect_equal(length(GOLDEN_CASES), EXPECTED_CASE_COUNT)
-  names_seen <- unique(vapply(GOLDEN_CASES, function(c) c$test, character(1)))
-  expect_setequal(names_seen, names(TEST_FACTORIES))
+  expect_equal(length(golden_cases), expected_case_count)
+  names_seen <- unique(vapply(golden_cases, function(c) c$test, character(1)))
+  expect_setequal(names_seen, names(test_factories))
 })
 
 test_that("each golden case reproduces its complete recorded result", {
-  for (i in seq_along(GOLDEN_CASES)) {
-    case <- GOLDEN_CASES[[i]]
+  for (i in seq_along(golden_cases)) {
+    case <- golden_cases[[i]]
     case_id <- case$id
     expect_true(nzchar(case_id), label = "fixture case ID must not be empty")
-    expect_true(case$test %in% names(TEST_FACTORIES),
+    expect_true(case$test %in% names(test_factories),
       label = sprintf("%s: unknown test %s", case_id, case$test)
     )
 
@@ -146,6 +127,11 @@ test_that("each golden case reproduces its complete recorded result", {
 
     dof_actual <- if (is.null(result$dof)) NULL else as.numeric(result$dof)
     assert_close(dof_actual, expected$dof, "dof", case_id)
-    assert_close(result$effect_size, expected$effect_size, "effect_size", case_id)
+    assert_close(
+      result$effect_size,
+      expected$effect_size,
+      "effect_size",
+      case_id
+    )
   }
 })

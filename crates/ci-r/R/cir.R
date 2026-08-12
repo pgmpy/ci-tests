@@ -32,7 +32,9 @@
 #' @return A scalar string, `"discrete"` or `"continuous"`.
 #' @keywords internal
 .cir_infer_kind <- function(col) {
-  if (is.factor(col) || is.character(col) || is.logical(col) || is.integer(col)) {
+  if (
+    is.factor(col) || is.character(col) || is.logical(col) || is.integer(col)
+  ) {
     "discrete"
   } else if (is.double(col)) {
     "continuous"
@@ -82,6 +84,7 @@
 #' @examples
 #' df <- data.frame(A = sample(0:1, 50, TRUE), X = rnorm(50))
 #' data <- dataset(df)
+#' @name cir_dataset
 #' @export
 dataset <- function(df) {
   df <- as.data.frame(df)
@@ -96,7 +99,9 @@ dataset <- function(df) {
     nrow = nrow(df),
     ncol = ncol(df)
   )
-  ptr <- Dataset$new(names_vec, kinds, values)
+  ptr <- Dataset$new( # nolint: object_usage_linter.
+    names_vec, kinds, values
+  )
   structure(
     list(ptr = ptr, names = names_vec, kinds = kinds),
     class = "cir_dataset"
@@ -160,7 +165,11 @@ print.cir_dataset <- function(x, ...) {
 #' @export
 chi_squared <- function(data, yates = TRUE) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(ChiSquared$new(ds$ptr, yates), ds, "chi_squared")
+  .cir_make_test(
+    ChiSquared$new(ds$ptr, yates), # nolint: object_usage_linter.
+    ds,
+    "chi_squared"
+  )
 }
 
 #' Log-likelihood / G-test (lambda = 0) discrete CI test.
@@ -170,7 +179,11 @@ chi_squared <- function(data, yates = TRUE) {
 #' @export
 log_likelihood <- function(data, yates = TRUE) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(LogLikelihood$new(ds$ptr, yates), ds, "log_likelihood")
+  .cir_make_test(
+    LogLikelihood$new(ds$ptr, yates), # nolint: object_usage_linter.
+    ds,
+    "log_likelihood"
+  )
 }
 
 #' Cressie-Read (lambda = 2/3) discrete CI test.
@@ -180,7 +193,11 @@ log_likelihood <- function(data, yates = TRUE) {
 #' @export
 cressie_read <- function(data, yates = TRUE) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(CressieRead$new(ds$ptr, yates), ds, "cressie_read")
+  .cir_make_test(
+    CressieRead$new(ds$ptr, yates), # nolint: object_usage_linter.
+    ds,
+    "cressie_read"
+  )
 }
 
 #' Freeman-Tukey (lambda = -1/2) discrete CI test.
@@ -190,7 +207,11 @@ cressie_read <- function(data, yates = TRUE) {
 #' @export
 freeman_tukey <- function(data, yates = TRUE) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(FreemanTukey$new(ds$ptr, yates), ds, "freeman_tukey")
+  .cir_make_test(
+    FreemanTukey$new(ds$ptr, yates), # nolint: object_usage_linter.
+    ds,
+    "freeman_tukey"
+  )
 }
 
 #' Modified log-likelihood (lambda = -1) discrete CI test.
@@ -200,7 +221,11 @@ freeman_tukey <- function(data, yates = TRUE) {
 #' @export
 modified_likelihood <- function(data, yates = TRUE) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(ModifiedLikelihood$new(ds$ptr, yates), ds, "modified_likelihood")
+  .cir_make_test(
+    ModifiedLikelihood$new(ds$ptr, yates), # nolint: object_usage_linter.
+    ds,
+    "modified_likelihood"
+  )
 }
 
 #' Pearson partial-correlation continuous CI test.
@@ -210,7 +235,11 @@ modified_likelihood <- function(data, yates = TRUE) {
 #' @export
 pearson_correlation <- function(data) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(PearsonCorrelation$new(ds$ptr), ds, "pearson_correlation")
+  .cir_make_test(
+    PearsonCorrelation$new(ds$ptr), # nolint: object_usage_linter.
+    ds,
+    "pearson_correlation"
+  )
 }
 
 #' Fisher-z continuous CI test.
@@ -225,7 +254,11 @@ pearson_correlation <- function(data) {
 #' @export
 fisher_z <- function(data) {
   ds <- .cir_as_dataset(data)
-  .cir_make_test(FisherZ$new(ds$ptr), ds, "fisher_z")
+  .cir_make_test(
+    FisherZ$new(ds$ptr), # nolint: object_usage_linter.
+    ds,
+    "fisher_z"
+  )
 }
 
 #' Pearson equivalence (TOST) continuous CI test.
@@ -242,7 +275,12 @@ fisher_z <- function(data) {
 pearson_equivalence <- function(data, delta_threshold = 0.1) {
   ds <- .cir_as_dataset(data)
   .cir_make_test(
-    PearsonEquivalence$new(ds$ptr, delta_threshold), ds, "pearson_equivalence"
+    # extendr generates this constructor in a separate source file.
+    PearsonEquivalence$new( # nolint: object_usage_linter.
+      ds$ptr, delta_threshold
+    ),
+    ds,
+    "pearson_equivalence"
   )
 }
 
@@ -284,7 +322,13 @@ run_test <- function(test, x, y, z = character()) {
 #' @param significance_level Significance level alpha (default `0.05`).
 #' @return A single logical: `TRUE` if independent at `significance_level`.
 #' @export
-is_independent <- function(test, x, y, z = character(), significance_level = 0.05) {
+is_independent <- function(
+  test,
+  x,
+  y,
+  z = character(),
+  significance_level = 0.05
+) {
   stopifnot(inherits(test, "cir_test"))
   test$handle$is_independent(x, y, .cir_as_names(z), significance_level)
 }
@@ -342,8 +386,8 @@ is_independent <- function(test, x, y, z = character(), significance_level = 0.0
 #' @export
 as_pcalg <- function(test) {
   stopifnot(inherits(test, "cir_test"))
-  # pcalg interprets the returned p-value with the standard convention (remove an
-  # edge / declare independence when p >= alpha). A test whose own rule is
+  # pcalg interprets the returned p-value with the standard convention: remove
+  # an edge / declare independence when p >= alpha. A test whose own rule is
   # inverted -- independence when p < alpha, i.e. the core's
   # `IndependenceRule::PValueLt` -- would have every decision silently flipped,
   # yielding a wrong skeleton/CPDAG with no error. Refuse them.
@@ -361,7 +405,7 @@ as_pcalg <- function(test) {
   }
   cols <- test$dataset$names
   handle <- test$handle
-  function(x, y, S, suffStat) {
+  function(x, y, S, suffStat) { # nolint: object_name_linter.
     xi <- cols[[x]]
     yi <- cols[[y]]
     zi <- if (length(S) > 0L) cols[as.integer(S)] else character()
@@ -411,7 +455,11 @@ ci_test <- function(test, x, y, z = character()) {
       statistic = statistic,
       parameter = parameter,
       p.value = res$p_value,
-      estimate = if (is.null(res$effect_size)) NULL else c(effect_size = res$effect_size),
+      estimate = if (is.null(res$effect_size)) {
+        NULL
+      } else {
+        c(effect_size = res$effect_size)
+      },
       method = sprintf("cir %s conditional independence test", test$name),
       data.name = sprintf("%s vs %s%s", x, y, zlab)
     ),

@@ -103,6 +103,13 @@ def test_is_independent_uses_rule() -> None:
     assert isinstance(chi.is_independent("A", "C", ["B"], significance_level=0.05), bool)
 
 
+@pytest.mark.parametrize("level", [float("nan"), float("inf"), float("-inf")])
+def test_is_independent_rejects_non_finite_significance_level(level: float) -> None:
+    chi = ChiSquared(_discrete_data())
+    with pytest.raises(CiError, match="significance level must be finite"):
+        chi.is_independent("A", "B", significance_level=level)
+
+
 def test_pearson_equivalence_dof_is_none() -> None:
     eqv = PearsonEquivalence(_continuous_data(), delta_threshold=0.1)
     res = eqv.run_test("X", "Y", ["Z"])

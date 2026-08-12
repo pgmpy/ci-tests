@@ -3,7 +3,21 @@ name = 'cir'
 publish = false
 version = '0.1.0'
 edition = '2021'
-rust-version = '1.65'
+rust-version = '1.81'
+
+[workspace]
+members = [ 'ci-core' ]
+resolver = '2'
+
+[workspace.dependencies]
+statrs = { version = '0.18.0' }
+
+[workspace.lints.rust]
+unsafe_code = 'forbid'
+
+[workspace.lints.clippy]
+all = 'warn'
+pedantic = 'warn'
 
 [lib]
 crate-type = [ 'rlib', 'staticlib' ]
@@ -14,5 +28,5 @@ name = 'document'
 path = 'document.rs'
 
 [dependencies]
-ci_core = { path = "../../../ci-core" }
+ci_core = { path = 'ci-core' }
 extendr-api = '0.9.0'

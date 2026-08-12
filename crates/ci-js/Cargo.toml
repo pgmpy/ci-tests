@@ -3,7 +3,7 @@ name = "ci_js"
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Team <team@example.com>"]
-license = ""
+license = "MIT"
 description = "wasm-pack bindings for Conditional Independence Testing"
 repository = ""
 

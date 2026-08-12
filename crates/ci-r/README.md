@@ -7,7 +7,7 @@ number of `X ⟂ Y | Z` queries against it. See the
 
 ## Install
 
-Requires a Rust toolchain ([rustup](https://rustup.rs)). From the repository root:
+Requires Rust 1.81 or newer ([rustup](https://rustup.rs)). From the repository root:
 
 ```r
 # install.packages("devtools")
@@ -76,4 +76,15 @@ ci_test(chi, "A", "B")
 ```r
 rextendr::document("crates/ci-r")   # recompile + regenerate wrappers
 devtools::test("crates/ci-r")       # includes the shared 80-case golden fixture
+archive <- devtools::build("crates/ci-r", manual = FALSE, vignettes = FALSE)
+devtools::check_built(archive, args = "--no-manual", error_on = "warning")
+```
+
+The source package includes locked, vendored Rust dependencies plus synchronized
+copies of `ci-core` and the golden fixture. From the repository root, refresh and
+verify those project-owned copies with:
+
+```bash
+python crates/ci-r/tools/sync_package_assets.py --sync
+python crates/ci-r/tools/sync_package_assets.py --check
 ```

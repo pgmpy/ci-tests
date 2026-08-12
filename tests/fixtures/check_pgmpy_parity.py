@@ -102,6 +102,7 @@ def classify_intentional_divergence(
         and case["expected"]["dof"] is None
         and isinstance(actual_value, numbers.Real)
         and not isinstance(actual_value, bool)
+        and math.isfinite(float(actual_value))
     ):
         return (
             f"{case['id']}: dof expected None, got {actual_value} "
@@ -131,6 +132,13 @@ def compare_actual_fields(
         else:
             divergences.append(divergence)
     return errors, divergences
+
+
+def _finite_non_negative_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0.0:
+        raise argparse.ArgumentTypeError("must be a finite, non-negative number")
+    return parsed
 
 
 def _compare_case_result(
@@ -163,7 +171,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         type=Path,
         help="repository root to import pgmpy from instead of the environment",
     )
-    parser.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE)
+    parser.add_argument(
+        "--tolerance", type=_finite_non_negative_float, default=DEFAULT_TOLERANCE
+    )
     return parser.parse_args(argv)
 
 

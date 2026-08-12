@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 CHECKER_PATH = Path(__file__).with_name("check_pgmpy_parity.py")
 
@@ -147,6 +149,31 @@ def test_conditioned_equivalence_numeric_dof_is_an_intentional_divergence() -> N
         "pearson-equivalence-inside-conditioned: dof expected None, got 13 "
         "(current pgmpy propagates conditioned Pearsonr dof)"
     )
+
+
+@pytest.mark.parametrize("actual_dof", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_dof_is_not_an_intentional_divergence(actual_dof: float) -> None:
+    checker = load_checker()
+    case = {
+        "id": "pearson-equivalence-inside-conditioned",
+        "test": "pearson_equivalence",
+        "z": ["Z1"],
+        "expected": {"dof": None},
+    }
+
+    assert checker.classify_intentional_divergence(case, "dof", actual_dof) is None
+
+
+@pytest.mark.parametrize("value", ["-1", "nan", "inf", "-inf"])
+def test_cli_rejects_negative_or_non_finite_tolerance(value: str) -> None:
+    checker = load_checker()
+    with pytest.raises(SystemExit):
+        checker._parse_args(["--tolerance", value])
+
+
+def test_cli_accepts_zero_tolerance() -> None:
+    checker = load_checker()
+    assert checker._parse_args(["--tolerance", "0"]).tolerance == 0.0
 
 
 def test_unconditional_equivalence_numeric_dof_is_not_a_divergence() -> None:

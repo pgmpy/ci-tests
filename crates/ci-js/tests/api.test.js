@@ -296,5 +296,6 @@ describe("isIndependent", () => {
     const chi = new ChiSquared(DISCRETE_COLS);
     expect(() => chi.isIndependent("A", "B", [], NaN)).toThrow(/finite/);
     expect(() => chi.isIndependent("A", "B", [], Infinity)).toThrow(/finite/);
+    expect(() => chi.isIndependent("A", "B", [], -Infinity)).toThrow(/finite/);
   });
 });
