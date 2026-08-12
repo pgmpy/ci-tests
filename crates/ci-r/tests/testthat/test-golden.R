@@ -79,10 +79,13 @@ construct_test <- function(name, data, params) {
   }
 }
 
-# Compare one numeric field against its expected value. Null expectations are
-# skipped (the test does not define them); Inf / NaN are matched defensively.
+# Compare one numeric field against its expected value. Null expectations
+# require a NULL result; Inf / NaN are matched defensively.
 assert_close <- function(actual, expected, field, case_id) {
   if (is.null(expected)) {
+    expect_null(actual,
+      label = sprintf("%s: expected %s=NULL, got %s", case_id, field, actual)
+    )
     return(invisible())
   }
   expect_false(is.null(actual),
@@ -118,10 +121,14 @@ test_that("golden fixture covers exactly the expected cases", {
   expect_setequal(names_seen, names(TEST_FACTORIES))
 })
 
-test_that("each golden case reproduces its recorded statistic / p_value / dof", {
+test_that("each golden case reproduces its complete recorded result", {
   for (i in seq_along(GOLDEN_CASES)) {
     case <- GOLDEN_CASES[[i]]
-    case_id <- sprintf("case[%d] %s", i - 1L, case$test)
+    case_id <- case$id
+    expect_true(nzchar(case_id), label = "fixture case ID must not be empty")
+    expect_true(case$test %in% names(TEST_FACTORIES),
+      label = sprintf("%s: unknown test %s", case_id, case$test)
+    )
 
     data <- build_dataset(case$columns)
     test <- construct_test(case$test, data, case$params)
@@ -135,17 +142,10 @@ test_that("each golden case reproduces its recorded statistic / p_value / dof", 
 
     assert_close(result$statistic, expected$statistic, "statistic", case_id)
 
-    # p-value: handle an exact-zero expectation defensively.
-    exp_p <- as.numeric(expected$p_value)
-    if (identical(exp_p, 0)) {
-      expect_equal(as.numeric(result$p_value), 0, tolerance = TOL,
-        label = sprintf("%s: p_value expected ~0, got %s", case_id, result$p_value)
-      )
-    } else {
-      assert_close(result$p_value, exp_p, "p_value", case_id)
-    }
+    assert_close(result$p_value, expected$p_value, "p_value", case_id)
 
     dof_actual <- if (is.null(result$dof)) NULL else as.numeric(result$dof)
     assert_close(dof_actual, expected$dof, "dof", case_id)
+    assert_close(result$effect_size, expected$effect_size, "effect_size", case_id)
   }
 })

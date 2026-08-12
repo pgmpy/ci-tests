@@ -80,12 +80,16 @@ function construct(name, data, params) {
 
 /**
  * Assert `actual` matches `expected` for `field` within TOL. Null/undefined
- * expectations are skipped (the test does not define that field). Infinity / NaN
- * are handled exactly (none appear in the current fixture, but be defensive).
+ * expectations require an absent result. Infinity / NaN are handled exactly
+ * (none appear in the current fixture, but be defensive).
  */
 function assertClose(actual, expected, field, caseId) {
   if (expected === null || expected === undefined) {
-    return; // Field not defined for this test; skip.
+    expect(
+      actual === null || actual === undefined,
+      `${caseId}: expected ${field}=null, got ${actual}`,
+    ).toBe(true);
+    return;
   }
   expect(actual, `${caseId}: expected ${field}=${expected}, got ${actual}`).not.toBeNull();
   expect(actual, `${caseId}: ${field} should be defined`).not.toBeUndefined();
@@ -109,10 +113,11 @@ function assertClose(actual, expected, field, caseId) {
 describe("golden fixture parity", () => {
   const counts = {};
 
-  test.each(GOLDEN_CASES.map((c, i) => [i, c]))(
-    "case[%i] %o",
-    (index, testCase) => {
-      const caseId = `case[${index}] ${testCase.test}`;
+  test.each(GOLDEN_CASES.map((c) => [c.id, c]))(
+    "%s",
+    (_fixtureCaseId, testCase) => {
+      const caseId = testCase.id;
+      expect(caseId, "fixture case ID must not be empty").not.toBe("");
       expect(TEST_CLASSES, `${caseId}: unknown test name`).toHaveProperty(testCase.test);
 
       const data = buildDataset(testCase.columns);
@@ -122,16 +127,7 @@ describe("golden fixture parity", () => {
 
       assertClose(result.statistic, expected.statistic, "statistic", caseId);
 
-      // p-value: handle exact-zero defensively, otherwise compare within TOL.
-      const expP = Number(expected.p_value);
-      if (expP === 0.0) {
-        expect(
-          Math.abs(result.pValue),
-          `${caseId}: pValue expected ~0, got ${result.pValue}`,
-        ).toBeLessThanOrEqual(TOL);
-      } else {
-        assertClose(result.pValue, expP, "pValue", caseId);
-      }
+      assertClose(result.pValue, expected.p_value, "pValue", caseId);
 
       assertClose(
         result.dof,
@@ -139,6 +135,7 @@ describe("golden fixture parity", () => {
         "dof",
         caseId,
       );
+      assertClose(result.effectSize, expected.effect_size, "effectSize", caseId);
 
       counts[testCase.test] = (counts[testCase.test] ?? 0) + 1;
     },

@@ -17,6 +17,7 @@ Depends:
     R (>= 4.2)
 Suggests:
     devtools,
+    jsonlite,
     rextendr,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

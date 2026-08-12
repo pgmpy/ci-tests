@@ -75,7 +75,7 @@ def _construct(name: str, data: Dataset, params: dict[str, Any]) -> Any:
 
 def _assert_close(actual: float | None, expected: Any, field: str, case_id: str) -> None:
     if expected is None:
-        # Null fields are skipped (the test does not define them).
+        assert actual is None, f"{case_id}: expected {field}=None, got {actual!r}"
         return
     assert actual is not None, f"{case_id}: expected {field}={expected}, got None"
     exp = float(expected)
@@ -97,13 +97,15 @@ GOLDEN_CASES = _load_cases()
 
 
 @pytest.mark.parametrize(
-    ("index", "case"),
-    list(enumerate(GOLDEN_CASES)),
-    ids=[f"{i:02d}-{c['test']}" for i, c in enumerate(GOLDEN_CASES)],
+    "case",
+    GOLDEN_CASES,
+    ids=[case["id"] for case in GOLDEN_CASES],
 )
-def test_golden_case(index: int, case: dict[str, Any]) -> None:
-    """Each fixture case reproduces its recorded statistic / p_value / dof."""
-    case_id = f"case[{index}] {case['test']}"
+def test_golden_case(case: dict[str, Any]) -> None:
+    """Each fixture case reproduces its complete recorded result."""
+    case_id = case["id"]
+    assert case_id, "fixture case ID must not be empty"
+    assert case["test"] in TEST_CLASSES, f"{case_id}: unknown test {case['test']}"
     data = _build_dataset(case["columns"])
     test = _construct(case["test"], data, case["params"])
 
@@ -112,14 +114,7 @@ def test_golden_case(index: int, case: dict[str, Any]) -> None:
 
     _assert_close(result.statistic, expected.get("statistic"), "statistic", case_id)
 
-    # p-value: handle exact-zero / inf defensively, otherwise compare within TOL.
-    exp_p = float(expected["p_value"])
-    if exp_p == 0.0:
-        assert result.p_value == pytest.approx(0.0, abs=TOL), (
-            f"{case_id}: p_value expected ~0, got {result.p_value!r}"
-        )
-    else:
-        _assert_close(result.p_value, exp_p, "p_value", case_id)
+    _assert_close(result.p_value, expected.get("p_value"), "p_value", case_id)
 
     _assert_close(
         None if result.dof is None else float(result.dof),
@@ -127,6 +122,7 @@ def test_golden_case(index: int, case: dict[str, Any]) -> None:
         "dof",
         case_id,
     )
+    _assert_close(result.effect_size, expected.get("effect_size"), "effect_size", case_id)
 
 
 def test_golden_covers_all_cases() -> None:

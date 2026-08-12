@@ -50,6 +50,7 @@ struct Expected {
 
 #[derive(Debug, Deserialize)]
 struct Case {
+    id: String,
     test: String,
     #[serde(default)]
     params: Params,
@@ -79,12 +80,16 @@ fn build_dataset(case: &Case) -> (Dataset, BTreeMap<String, usize>) {
         let kind = match spec.kind.as_str() {
             "discrete" => ColumnKind::Discrete,
             "continuous" => ColumnKind::Continuous,
-            other => panic!("unknown column kind {other}"),
+            other => panic!("[{}:{}] unknown column kind {other}", case.id, case.test),
         };
         cols.push((name.clone(), kind, spec.values.clone()));
         index.insert(name.clone(), i);
     }
-    (Dataset::from_columns(cols).unwrap(), index)
+    (
+        Dataset::from_columns(cols)
+            .unwrap_or_else(|e| panic!("[{}:{}] failed to build dataset: {e}", case.id, case.test)),
+        index,
+    )
 }
 
 /// The `yates` flag for a discrete case (defaults to `true` if unspecified).
@@ -94,9 +99,21 @@ fn case_yates(case: &Case) -> bool {
 
 fn run_case(case: &Case) -> CiResult {
     let (data, index) = build_dataset(case);
-    let x = index[&case.x];
-    let y = index[&case.y];
-    let z: Vec<usize> = case.z.iter().map(|n| index[n]).collect();
+    let x = *index
+        .get(&case.x)
+        .unwrap_or_else(|| panic!("[{}:{}] unknown x column {}", case.id, case.test, case.x));
+    let y = *index
+        .get(&case.y)
+        .unwrap_or_else(|| panic!("[{}:{}] unknown y column {}", case.id, case.test, case.y));
+    let z: Vec<usize> = case
+        .z
+        .iter()
+        .map(|name| {
+            *index
+                .get(name)
+                .unwrap_or_else(|| panic!("[{}:{}] unknown z column {name}", case.id, case.test))
+        })
+        .collect();
 
     // Construct each discrete test with the case's own Yates flag so both the
     // Yates-on and Yates-off fixture rows are exercised.
@@ -118,23 +135,41 @@ fn run_case(case: &Case) -> CiResult {
         }),
         "pearson_correlation" => Box::new(PearsonCorrelation::new()),
         "pearson_equivalence" => {
-            let delta = case
-                .params
-                .delta_threshold
-                .expect("equivalence case missing delta_threshold");
+            let delta = case.params.delta_threshold.unwrap_or_else(|| {
+                panic!(
+                    "[{}:{}] equivalence case missing delta_threshold",
+                    case.id, case.test
+                )
+            });
             Box::new(PearsonEquivalence::new(delta))
         }
         "fisher_z" => Box::new(FisherZ::new()),
-        other => panic!("run_case called for unsupported test {other}"),
+        other => panic!(
+            "[{}:{}] run_case called for unsupported test {other}",
+            case.id, case.test
+        ),
     };
 
-    test.test(&data, x, y, &z).unwrap()
+    test.test(&data, x, y, &z)
+        .unwrap_or_else(|e| panic!("[{}:{}] test execution failed: {e}", case.id, case.test))
 }
 
 fn assert_field(name: &str, case: &Case, expected: Option<f64>, actual: Option<f64>) {
-    let Some(exp) = expected else { return };
-    let act = actual
-        .unwrap_or_else(|| panic!("[{}] expected {name}={exp} but result had None", case.test));
+    let Some(exp) = expected else {
+        assert!(
+            actual.is_none(),
+            "[{}:{}] expected {name}=None, got {actual:?}",
+            case.id,
+            case.test,
+        );
+        return;
+    };
+    let act = actual.unwrap_or_else(|| {
+        panic!(
+            "[{}:{}] expected {name}={exp} but result had None",
+            case.id, case.test
+        )
+    });
 
     // Handle the degenerate `+∞` statistic / `p = 0` case exactly: an infinite
     // expectation requires a matching infinite actual of the same sign (and
@@ -142,7 +177,8 @@ fn assert_field(name: &str, case: &Case, expected: Option<f64>, actual: Option<f
     if exp.is_infinite() || act.is_infinite() {
         assert!(
             exp.total_cmp(&act).is_eq(),
-            "[{}] {name} mismatch: expected {exp}, got {act} (x={}, y={}, z={:?})",
+            "[{}:{}] {name} mismatch: expected {exp}, got {act} (x={}, y={}, z={:?})",
+            case.id,
             case.test,
             case.x,
             case.y,
@@ -153,7 +189,8 @@ fn assert_field(name: &str, case: &Case, expected: Option<f64>, actual: Option<f
 
     assert!(
         (act - exp).abs() < TOL,
-        "[{}] {name} mismatch: expected {exp}, got {act} (x={}, y={}, z={:?})",
+        "[{}:{}] {name} mismatch: expected {exp}, got {act} (x={}, y={}, z={:?})",
+        case.id,
         case.test,
         case.x,
         case.y,
@@ -167,6 +204,12 @@ fn golden_fixture_matches() {
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
 
     for case in &cases {
+        assert!(
+            !case.id.is_empty(),
+            "[{}:{}] fixture case ID is empty",
+            case.id,
+            case.test
+        );
         let result = run_case(case);
 
         assert_field("statistic", case, case.expected.statistic, result.statistic);
