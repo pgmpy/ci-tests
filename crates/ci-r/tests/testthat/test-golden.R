@@ -3,9 +3,9 @@
 # Loads the shared cross-language fixture `tests/fixtures/golden.json` and, for
 # each of the eight tests, builds a `dataset()` from the case's columns,
 # constructs the test with the case's parameters, runs it, and asserts that
-# `statistic` / `p_value` / `dof` match the recorded `expected` values within a
-# tight tolerance. This is the binding's numeric parity gate against the
-# scipy/pgmpy reference.
+# `statistic` / `p_value` / `dof` / `effect_size` match the recorded `expected`
+# values within a tight tolerance. This is the binding's numeric parity gate
+# against the scipy/pgmpy reference.
 
 library(cir)
 

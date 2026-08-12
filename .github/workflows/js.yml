@@ -13,8 +13,8 @@ name: JS CI
 # re-enable it once a newer wasm-opt is guaranteed on the runner.
 #
 # Tests live in crates/ci-js/tests (their own package.json + lockfile); the
-# golden parity suite (golden.test.js) covers all 73 fixture cases (74 vitest
-# test cases: 73 parametrized + 1 coverage assertion).
+# golden parity suite (golden.test.js) covers all 80 fixture cases (81 vitest
+# test cases: 80 parametrized + 1 coverage assertion).
 
 on:
   push:
@@ -105,7 +105,7 @@ jobs:
         run: wasm-pack build crates/ci-js --target nodejs
 
       # Verified locally: `npm ci && npm test` in crates/ci-js/tests runs vitest;
-      # the golden suite covers all 73 fixture cases.
+      # the golden suite covers all 80 fixture cases.
       - name: Install test dependencies
         working-directory: crates/ci-js/tests
         run: npm ci

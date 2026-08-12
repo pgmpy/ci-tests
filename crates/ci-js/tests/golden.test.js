@@ -3,10 +3,11 @@
 // Loads the shared cross-language fixture `tests/fixtures/golden.json` (at the
 // repository root) and, for each of the eight tests, builds a `Dataset` from the
 // case's columns, constructs the test with the case's parameters, runs it, and
-// asserts that `statistic` / `pValue` / `dof` match the recorded `expected`
-// values within 1e-7. This is the binding's numeric parity gate against the
-// scipy/pgmpy reference, mirroring the Rust (`crates/ci-core/tests/golden.rs`)
-// and Python (`crates/ci-python/test/test_golden.py`) gates.
+// asserts that `statistic` / `pValue` / `dof` / `effectSize` match the recorded
+// `expected` values within 1e-7. This is the binding's numeric parity gate
+// against the scipy/pgmpy reference, mirroring the Rust
+// (`crates/ci-core/tests/golden.rs`) and Python
+// (`crates/ci-python/test/test_golden.py`) gates.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -47,7 +48,15 @@ const TEST_CLASSES = {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // crates/ci-js/tests/golden.test.js -> repo root is three parents up.
-const GOLDEN_PATH = resolve(__dirname, "..", "..", "..", "tests", "fixtures", "golden.json");
+const GOLDEN_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "tests",
+  "fixtures",
+  "golden.json",
+);
 
 const GOLDEN_CASES = JSON.parse(readFileSync(GOLDEN_PATH, "utf8"));
 
@@ -91,14 +100,19 @@ function assertClose(actual, expected, field, caseId) {
     ).toBe(true);
     return;
   }
-  expect(actual, `${caseId}: expected ${field}=${expected}, got ${actual}`).not.toBeNull();
+  expect(
+    actual,
+    `${caseId}: expected ${field}=${expected}, got ${actual}`,
+  ).not.toBeNull();
   expect(actual, `${caseId}: ${field} should be defined`).not.toBeUndefined();
 
   const exp = Number(expected);
   if (!Number.isFinite(exp)) {
     // Infinite or NaN expectation: require an exactly-matching actual.
     if (Number.isNaN(exp)) {
-      expect(Number.isNaN(actual), `${caseId}: ${field} expected NaN`).toBe(true);
+      expect(Number.isNaN(actual), `${caseId}: ${field} expected NaN`).toBe(
+        true,
+      );
     } else {
       expect(actual, `${caseId}: ${field} expected ${exp}`).toBe(exp);
     }
@@ -118,7 +132,9 @@ describe("golden fixture parity", () => {
     (_fixtureCaseId, testCase) => {
       const caseId = testCase.id;
       expect(caseId, "fixture case ID must not be empty").not.toBe("");
-      expect(TEST_CLASSES, `${caseId}: unknown test name`).toHaveProperty(testCase.test);
+      expect(TEST_CLASSES, `${caseId}: unknown test name`).toHaveProperty(
+        testCase.test,
+      );
 
       const data = buildDataset(testCase.columns);
       const test_ = construct(testCase.test, data, testCase.params);
@@ -131,11 +147,18 @@ describe("golden fixture parity", () => {
 
       assertClose(
         result.dof,
-        expected.dof === null || expected.dof === undefined ? expected.dof : Number(expected.dof),
+        expected.dof === null || expected.dof === undefined
+          ? expected.dof
+          : Number(expected.dof),
         "dof",
         caseId,
       );
-      assertClose(result.effectSize, expected.effect_size, "effectSize", caseId);
+      assertClose(
+        result.effectSize,
+        expected.effect_size,
+        "effectSize",
+        caseId,
+      );
 
       counts[testCase.test] = (counts[testCase.test] ?? 0) + 1;
     },

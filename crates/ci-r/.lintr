@@ -1,4 +1,1 @@
-linters: linters_with_defaults(
-    line_length_linter(120),
-    object_name_linter(styles = c("snake_case", "SNAKE_CASE"))
-  )
+exclusions: list("R/extendr-wrappers.R")

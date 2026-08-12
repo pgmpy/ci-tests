@@ -4,7 +4,14 @@
 
 import { describe, test, expect, beforeAll } from "vitest";
 import pkg from "../pkg/ci_js.js";
-const { Dataset, ChiSquared, FisherZ, PearsonCorrelation, PearsonEquivalence, init } = pkg;
+const {
+  Dataset,
+  ChiSquared,
+  FisherZ,
+  PearsonCorrelation,
+  PearsonEquivalence,
+  init,
+} = pkg;
 
 beforeAll(() => init());
 
@@ -38,7 +45,10 @@ describe("implicit construction", () => {
 describe("string categoricals", () => {
   test("discrete columns accept string values", () => {
     const data = new Dataset({
-      A: { kind: "discrete", values: ["yes", "no", "yes", "no", "maybe", "yes"] },
+      A: {
+        kind: "discrete",
+        values: ["yes", "no", "yes", "no", "maybe", "yes"],
+      },
       B: { kind: "discrete", values: [0, 1, 0, 1, 0, 1] },
     });
     const r = new ChiSquared(data).runTest("A", "B", []);
@@ -103,7 +113,9 @@ describe("strict NaN policy and validation", () => {
 describe("fisher_z", () => {
   test("runs and reports no dof", () => {
     const n = 60;
-    const X = [], Y = [], Z = [];
+    const X = [],
+      Y = [],
+      Z = [];
     let s = 42;
     const rand = () => {
       // deterministic LCG in (-1, 1)
@@ -127,7 +139,10 @@ describe("fisher_z", () => {
     expect(r.pValue).toBeGreaterThan(0);
     const pc = new PearsonCorrelation(data).runTest("X", "Y", ["Z"]);
     // statistic = sqrt(n - 1 - 3) * atanh(r)
-    expect(r.statistic).toBeCloseTo(Math.sqrt(n - 4) * Math.atanh(pc.statistic), 9);
+    expect(r.statistic).toBeCloseTo(
+      Math.sqrt(n - 4) * Math.atanh(pc.statistic),
+      9,
+    );
   });
 });
 
@@ -136,15 +151,18 @@ describe("strict config", () => {
     expect(
       () => new ChiSquared(DISCRETE_COLS, { yate: false }), // typo of yates
     ).toThrow(/invalid config object/);
-    expect(
-      () => new FisherZ(new Dataset(DISCRETE_COLS), { foo: 1 }),
-    ).toThrow(/invalid config object/);
+    expect(() => new FisherZ(new Dataset(DISCRETE_COLS), { foo: 1 })).toThrow(
+      /invalid config object/,
+    );
   });
 
   test("valid configs still work", () => {
-    expect(new ChiSquared(DISCRETE_COLS, {}).runTest("A", "B", []).pValue).toBeGreaterThan(0);
     expect(
-      new ChiSquared(DISCRETE_COLS, { yates: false }).runTest("A", "B", []).pValue,
+      new ChiSquared(DISCRETE_COLS, {}).runTest("A", "B", []).pValue,
+    ).toBeGreaterThan(0);
+    expect(
+      new ChiSquared(DISCRETE_COLS, { yates: false }).runTest("A", "B", [])
+        .pValue,
     ).toBeGreaterThan(0);
   });
 });
@@ -196,8 +214,14 @@ describe("effectSize result field", () => {
 
   test("PearsonCorrelation populates effectSize (|r|) for continuous data", () => {
     const data = new Dataset({
-      X: { kind: "continuous", values: [0.4, 1.3, -0.2, 0.9, 0.1, -0.7, 0.6, 1.1] },
-      Y: { kind: "continuous", values: [1.0, -0.3, 0.8, 0.2, -0.9, 0.5, -0.1, 0.7] },
+      X: {
+        kind: "continuous",
+        values: [0.4, 1.3, -0.2, 0.9, 0.1, -0.7, 0.6, 1.1],
+      },
+      Y: {
+        kind: "continuous",
+        values: [1.0, -0.3, 0.8, 0.2, -0.9, 0.5, -0.1, 0.7],
+      },
     });
     const r = new PearsonCorrelation(data).runTest("X", "Y", []);
     expect(typeof r.effectSize).toBe("number");
@@ -263,7 +287,9 @@ describe("isIndependent", () => {
     const chi = new ChiSquared(DISCRETE_COLS);
     // Omitting the level must behave like passing 0.05 explicitly, not coerce to
     // NaN (which would make every comparison false and silently return false).
-    expect(chi.isIndependent("A", "B", [])).toBe(chi.isIndependent("A", "B", [], 0.05));
+    expect(chi.isIndependent("A", "B", [])).toBe(
+      chi.isIndependent("A", "B", [], 0.05),
+    );
   });
 
   test("a non-finite significanceLevel throws instead of silently returning false", () => {

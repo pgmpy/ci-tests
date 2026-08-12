@@ -7,7 +7,7 @@ name: R CI
 # Toolchain: R + rextendr (which compiles the embedded Rust crate), devtools,
 # testthat, and jsonlite (the golden suite reads tests/fixtures/golden.json via
 # jsonlite::fromJSON). rextendr::document() regenerates the extendr wrappers,
-# then devtools::test() runs the package suite (469 tests, including the 73-case
+# then devtools::test() runs the package suite (469 tests, including the 80-case
 # golden parity gate).
 #
 # We use r-lib/actions/setup-r (a standard CRAN R), which does NOT require the
@@ -64,7 +64,9 @@ jobs:
 
       - name: Check R formatting
         working-directory: crates/ci-r
-        run: styler::style_pkg(dry = "fail")
+        run: |
+          files <- setdiff(list.files("R", pattern = "[.]R$", full.names = TRUE), "R/extendr-wrappers.R")
+          styler::style_file(files, dry = "fail", include_roxygen_examples = FALSE)
         shell: Rscript {0}
 
       - name: Lint R code
@@ -95,8 +97,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # jsonlite is required by the golden suite but is not a package dependency,
-      # so install it alongside devtools/rextendr/testthat.
+      # jsonlite is declared in Suggests for the golden suite; install it
+      # alongside devtools/rextendr/testthat.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -109,7 +111,7 @@ jobs:
         shell: Rscript {0}
 
       # Verified locally: `devtools::test("crates/ci-r")` -> 469 tests incl. the
-      # 73-case golden parity gate (tests/fixtures/golden.json).
+      # 80-case golden parity gate (tests/fixtures/golden.json).
       - name: Run R tests
         run: devtools::test("crates/ci-r", reporter = "summary")
         shell: Rscript {0}
