@@ -2,7 +2,9 @@
 name = "ci-python"
 version = "0.1.0"
 requires-python = ">=3.10,<3.15"
-dependencies = []
+dependencies = [
+  "numpy>=1.26",
+]
 classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -24,7 +26,11 @@ python-source = "."
 
 [project.optional-dependencies]
 test = [
+  "mypy",
+  "pandas",
+  "pandas-stubs",
   "pytest",
+  "ruff",
 ]
 
 [tool.pytest.ini_options]
@@ -61,6 +67,9 @@ ignore = [
     "TD003",    # missing-todo-link: Checks that a TODO comment is associated with a link to a relevant issue or ticket.
     "TRY003",   # raise-vanilla-args: Checks for long exception messages that are not defined in the exception class itself.
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"test/**" = ["ANN401", "D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

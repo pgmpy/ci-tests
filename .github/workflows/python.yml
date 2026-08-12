@@ -62,9 +62,28 @@ jobs:
         working-directory: crates/ci-python
         run: ruff check .
 
+  golden-fixture:
+    name: Golden Fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install fixture dependencies
+        run: pip install pytest -r tests/fixtures/requirements.txt
+
+      - name: Test fixture tooling
+        run: pytest tests/fixtures/test_generate_golden.py tests/fixtures/test_check_pgmpy_parity.py
+
+      - name: Check generated fixture
+        run: python tests/fixtures/generate_golden.py --check
+
   python-test:
     name: Python Tests
-    needs: [python-lint]
+    needs: [golden-fixture, python-lint]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -85,10 +104,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Python dependencies
-        run: pip install maturin pytest numpy mypy
+        run: pip install maturin numpy pandas pandas-stubs pytest mypy
 
       # Verified locally: maturin builds the extension; the golden parity test
-      # (crates/ci-python/test/test_golden.py) reproduces all 73 fixture cases.
+      # (crates/ci-python/test/test_golden.py) reproduces all 80 fixture cases.
       # On a too-new interpreter, prefix with
       # PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 (not required for 3.11-3.13).
       - name: Build and install extension
@@ -99,6 +118,6 @@ jobs:
         working-directory: crates/ci-python
         run: mypy test/
 
-      # Verified locally: `pytest crates/ci-python/test/` -> golden = 73/73.
+      # Verified locally: `pytest crates/ci-python/test/` -> golden = 80/80.
       - name: Run tests
         run: pytest crates/ci-python/test/

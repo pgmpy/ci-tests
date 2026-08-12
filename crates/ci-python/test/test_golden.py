@@ -3,7 +3,8 @@
 Loads the shared cross-language fixture ``tests/fixtures/golden.json`` and, for
 each of the eight tests, builds a :class:`Dataset` from the case's columns,
 constructs the test with the case's parameters, runs it, and asserts that
-``statistic`` / ``p_value`` / ``dof`` match the recorded ``expected`` values.
+``statistic`` / ``p_value`` / ``dof`` / ``effect_size`` match the recorded
+``expected`` values.
 This is the binding's numeric parity gate against the scipy/pgmpy reference.
 """
 
@@ -56,10 +57,7 @@ def _load_cases() -> list[dict[str, Any]]:
 
 
 def _build_dataset(columns: dict[str, dict[str, Any]]) -> Dataset:
-    spec = {
-        name: (col["kind"], np.asarray(col["values"], dtype=np.float64))
-        for name, col in columns.items()
-    }
+    spec = {name: (col["kind"], np.asarray(col["values"], dtype=np.float64)) for name, col in columns.items()}
     return Dataset(spec)
 
 
@@ -84,9 +82,7 @@ def _assert_close(actual: float | None, expected: Any, field: str, case_id: str)
         assert math.isinf(actual) == math.isinf(exp), f"{case_id}: {field} inf mismatch"
         assert math.isnan(actual) == math.isnan(exp), f"{case_id}: {field} nan mismatch"
         if math.isinf(exp):
-            assert math.copysign(1.0, actual) == math.copysign(1.0, exp), (
-                f"{case_id}: {field} inf sign mismatch"
-            )
+            assert math.copysign(1.0, actual) == math.copysign(1.0, exp), f"{case_id}: {field} inf sign mismatch"
         return
     assert actual == pytest.approx(exp, abs=TOL, rel=0.0), (
         f"{case_id}: {field} mismatch: got {actual!r}, expected {exp!r}"
@@ -127,10 +123,6 @@ def test_golden_case(case: dict[str, Any]) -> None:
 
 def test_golden_covers_all_cases() -> None:
     """The fixture has exactly the expected number of cases, all dispatched."""
-    assert len(GOLDEN_CASES) == EXPECTED_CASE_COUNT, (
-        f"expected {EXPECTED_CASE_COUNT} cases, found {len(GOLDEN_CASES)}"
-    )
+    assert len(GOLDEN_CASES) == EXPECTED_CASE_COUNT, f"expected {EXPECTED_CASE_COUNT} cases, found {len(GOLDEN_CASES)}"
     names = {c["test"] for c in GOLDEN_CASES}
-    assert names == set(TEST_CLASSES), (
-        f"fixture tests {names} do not match binding classes {set(TEST_CLASSES)}"
-    )
+    assert names == set(TEST_CLASSES), f"fixture tests {names} do not match binding classes {set(TEST_CLASSES)}"

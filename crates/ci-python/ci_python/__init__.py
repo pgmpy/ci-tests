@@ -23,18 +23,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from ci_python._ci_python import (
     ChiSquared,
     CiError,
     CiResult,
     CressieRead,
-    Dataset as _Dataset,
     FisherZ,
     FreemanTukey,
     LogLikelihood,
     ModifiedLikelihood,
     PearsonCorrelation,
     PearsonEquivalence,
+)
+from ci_python._ci_python import (
+    Dataset as _Dataset,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import
@@ -62,16 +66,14 @@ def _is_numpy_numeric(dtype: Any) -> bool:  # noqa: ANN401
     raising ``TypeError``) for pandas extension dtypes such as ``StringDtype``
     or ``ArrowDtype`` that numpy cannot interpret.
     """
-    import numpy as np
-
     return _safe_issubdtype(dtype, np.number) or _safe_issubdtype(dtype, np.bool_)
 
 
 def _safe_issubdtype(dtype: Any, base: Any) -> bool:  # noqa: ANN401
-    """`np.issubdtype` that returns False (instead of raising) for pandas
-    extension dtypes it cannot interpret."""
-    import numpy as np
+    """Return whether ``dtype`` is a subtype of ``base`` without raising.
 
+    Pandas extension dtypes that NumPy cannot interpret return ``False``.
+    """
     try:
         return bool(np.issubdtype(dtype, base))
     except TypeError:
@@ -85,8 +87,6 @@ def _infer_kind(dtype: Any) -> str:  # noqa: ANN401 - numpy/pandas dtype is opaq
     ``"discrete"``; floating dtypes map to ``"continuous"``. Anything else
     raises ``TypeError``.
     """
-    import numpy as np
-
     name = str(getattr(dtype, "name", dtype))
     if name in ("category", "string", "str"):
         return "discrete"
@@ -134,8 +134,7 @@ class Dataset(_Dataset):
             is built per constructor call; to share data across tests, build
             a :class:`Dataset` explicitly.
         """
-        import numpy as np
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415 - optional dependency imported lazily
 
         columns: dict[str, tuple[str, Any]] = {}
         for name in df.columns:

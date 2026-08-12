@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 import pytest
 
@@ -170,8 +172,6 @@ def test_fisher_z_concurrent_calls_are_safe() -> None:
     stay identical. (It cannot observe the GIL release itself; a wall-clock
     speedup assertion on a microsecond-scale call would be hopelessly flaky.)
     """
-    import threading
-
     data = _continuous_data()
     fz = FisherZ(data)
     res = fz.run_test("X", "Y", ["Z"])
@@ -183,8 +183,7 @@ def test_fisher_z_concurrent_calls_are_safe() -> None:
     per_thread: list[list[float]] = [[] for _ in range(4)]
 
     def worker(bucket: list[float]) -> None:
-        for _ in range(50):
-            bucket.append(fz.run_test("X", "Y", ["Z"]).p_value)
+        bucket.extend(fz.run_test("X", "Y", ["Z"]).p_value for _ in range(50))
 
     threads = [threading.Thread(target=worker, args=(b,)) for b in per_thread]
     for t in threads:
@@ -252,9 +251,9 @@ def test_from_pandas_object_and_category_columns() -> None:
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(
         {
-            "A": ["x", "y", "x", "y", "x", "y"],                  # object -> discrete
+            "A": ["x", "y", "x", "y", "x", "y"],  # object -> discrete
             "B": pd.Categorical(["u", "v", "u", "v", "u", "v"]),  # category -> discrete
-            "C": [0.1, 0.4, 0.2, 0.8, 0.5, 0.9],                  # float -> continuous
+            "C": [0.1, 0.4, 0.2, 0.8, 0.5, 0.9],  # float -> continuous
         }
     )
     data = Dataset.from_pandas(df)

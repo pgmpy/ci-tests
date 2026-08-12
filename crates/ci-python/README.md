@@ -17,11 +17,14 @@ writes the `p >= alpha` (vs. `p < alpha`) logic.
 | `CressieRead` | Discrete | `yates=True` | int |
 | `FreemanTukey` | Discrete | `yates=True` | int |
 | `ModifiedLikelihood` | Discrete | `yates=True` | int |
-| `PearsonCorrelation` | Continuous | — | `None` |
+| `PearsonCorrelation` | Continuous | — | `n - |Z| - 2` |
 | `PearsonEquivalence` | Continuous | `delta_threshold=0.1` | `None` |
+| `FisherZ` | Continuous | — | `None` |
 
 `run_test` returns a `CiResult` with attributes `statistic` (float | None),
 `p_value` (float), `dof` (int | None), and `effect_size` (float | None).
+`PearsonCorrelation` reports `dof = n - |Z| - 2`; Fisher-Z and Pearson
+equivalence report `None`.
 
 ## Requirements
 
@@ -47,24 +50,29 @@ maturin develop -m crates/ci-python/Cargo.toml
 
 ```python
 import numpy as np
-from ci_python import Dataset, ChiSquared, PearsonEquivalence
+from ci_python import Dataset, ChiSquared, FisherZ, PearsonEquivalence
 
 data = Dataset({
     "A": ("discrete", np.array([0, 1, 0, 1, 0, 1, 1, 0], dtype=float)),
     "B": ("discrete", np.array([1, 1, 0, 0, 1, 0, 1, 0], dtype=float)),
+    "C": ("discrete", np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=float)),
     "X": ("continuous", np.random.default_rng(0).standard_normal(8)),
+    "Y": ("continuous", np.random.default_rng(1).standard_normal(8)),
+    "Z": ("continuous", np.random.default_rng(2).standard_normal(8)),
 })
 
 # Discrete: chi-squared with Yates' correction (the default).
 chi = ChiSquared(data)                     # yates=True
-res = chi.run_test("A", "B", ["X"])        # A ⟂ B | X
+res = chi.run_test("A", "B", ["C"])        # A ⟂ B | C
 res.statistic, res.p_value, res.dof, res.effect_size
-chi.is_independent("A", "B", ["X"], significance_level=0.05)   # -> bool (p >= alpha)
+chi.is_independent("A", "B", ["C"], significance_level=0.05)   # -> bool (p >= alpha)
 
-# Continuous equivalence (TOST): extra arg lives in the constructor.
+# Continuous Fisher-Z and equivalence (TOST): every query column is continuous.
+fz = FisherZ(data)
+fz.run_test("X", "Y", ["Z"])              # res.dof is None
 eqv = PearsonEquivalence(data, delta_threshold=0.1)
-res = eqv.run_test("X", "A")               # res.dof is None
-eqv.is_independent("X", "A", significance_level=0.05)          # -> bool (p < alpha)
+res = eqv.run_test("X", "Y", ["Z"])        # res.dof is None
+eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)  # -> bool (p < alpha)
 ```
 
 - `x` and `y` accept a column **name** (`str`) or an integer **index**; `z` is a
