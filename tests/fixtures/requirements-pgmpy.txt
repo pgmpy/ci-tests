@@ -1,0 +1,2 @@
+-r requirements.txt
+pgmpy @ git+https://github.com/pgmpy/pgmpy.git@8a221e915889f77bc3e503528e63df5803cfd43d
