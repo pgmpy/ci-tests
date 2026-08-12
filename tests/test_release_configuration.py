@@ -115,10 +115,16 @@ def test_r_vendor_archive_matches_the_locked_crate_set_and_declares_licenses() -
     manifests = vendored_crate_manifests()
     assert set(manifests) == registry_crates_from_lockfile()
     assert EXTENDR_CRATES <= {name for name, _ in manifests}
-    assert all(
-        "license" in manifest or "license-file" in manifest
-        for manifest in manifests.values()
-    )
+    with tarfile.open(VENDOR_ARCHIVE, "r:xz") as archive:
+        members = {member.name for member in archive.getmembers()}
+    for (name, _), manifest in manifests.items():
+        license_expression = manifest.get("license", "")
+        license_file = manifest.get("license-file", "")
+        assert isinstance(license_expression, str)
+        assert isinstance(license_file, str)
+        assert license_expression.strip() or license_file.strip()
+        if license_file:
+            assert f"vendor/{name}/{license_file}" in members
 
 
 def test_r_package_includes_the_upstream_extendr_mit_notice() -> None:
@@ -126,7 +132,18 @@ def test_r_package_includes_the_upstream_extendr_mit_notice() -> None:
     notice = THIRD_PARTY_NOTICE.read_text(encoding="utf-8")
     assert "https://github.com/extendr/extendr" in notice
     assert all(crate in notice for crate in EXTENDR_CRATES)
-    assert "Copyright (c) 2020 Andy Thomason, Claus O. Wilke" in notice
+    assert "Copyright (c) 2021 The Extendr contributors (See CONTRIBUTORS.md)" in notice
+    for contributor in (
+        "Andy Thomason",
+        "Thomas Down",
+        "Mossa Merhi Reimert",
+        "Claus O. Wilke",
+        "Hiroaki Yutani",
+        "Ilia Kosenkov",
+        "Daniel Falbel",
+        "Genomics PLC",
+    ):
+        assert contributor in notice
     assert (
         "Permission is hereby granted, free of charge, to any person obtaining a copy"
         in notice

@@ -14,7 +14,25 @@ vendored crates' `.cargo_vcs_info.json` records upstream commits
 
 MIT License
 
-Copyright (c) 2020 Andy Thomason, Claus O. Wilke
+Copyright (c) 2021 The Extendr contributors (See CONTRIBUTORS.md)
+
+The following upstream contributor list is copied from the identical
+`CONTRIBUTORS.md` files at the source revisions named above, so the upstream
+copyright reference is complete in this redistributed source package:
+
+Individuals:
+
+- Andy Thomason
+- Thomas Down
+- Mossa Merhi Reimert
+- Claus O. Wilke
+- Hiroaki Yutani
+- Ilia Kosenkov
+- Daniel Falbel
+
+Commercial organization:
+
+- Genomics PLC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
