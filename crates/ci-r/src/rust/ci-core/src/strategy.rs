@@ -108,7 +108,7 @@ pub fn validate_query(data: &Dataset, x: usize, y: usize, z: &[usize]) -> Result
     Ok(())
 }
 
-/// A conditional-independence test bound to a [`Dataset`].
+/// A stateless conditional-independence test operating on a supplied [`Dataset`].
 pub trait CITest: Send + Sync {
     /// Test-specific computation for `x ⊥ y | z`. Implementations may assume
     /// the query has already been validated by [`CITest::test`]; call sites

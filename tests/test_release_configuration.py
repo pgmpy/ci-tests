@@ -98,10 +98,17 @@ def test_js_uses_one_npm_project() -> None:
         assert setup["with"]["cache-dependency-path"] == (
             "crates/ci-js/package-lock.json"
         )
-        npm_steps = [
-            step for step in job["steps"] if step.get("run") in {"npm ci", "npm test"}
-        ]
-        assert all(step["working-directory"] == "crates/ci-js" for step in npm_steps)
+        install = next(step for step in job["steps"] if step.get("run") == "npm ci")
+        assert install["working-directory"] == "crates/ci-js"
+
+    lint = workflow["jobs"]["js-lint"]
+    for command in ("npx prettier --check .", "npx eslint ."):
+        step = next(step for step in lint["steps"] if step.get("run") == command)
+        assert step["working-directory"] == "crates/ci-js"
+
+    test = workflow["jobs"]["js-test"]
+    npm_test = next(step for step in test["steps"] if step.get("run") == "npm test")
+    assert npm_test["working-directory"] == "crates/ci-js"
 
 
 def test_r_workflow_checks_the_built_source_archive_with_warnings_as_errors() -> None:
@@ -227,6 +234,10 @@ def test_leaf_docs_examples_and_package_metadata_are_current() -> None:
         assert "https://github.com/pgmpy/ci-tests/blob/main/CONTRIBUTING.md" in readme
         assert "../../README.md" not in readme
         assert "../../CONTRIBUTING.md" not in readme
+        assert "`test(&data, x, y, z)`" in readme
+        assert "`is_independent(&data, x, y, z, alpha)`" in readme
+        assert "`run_test(" not in readme
+        assert "A bound test" not in readme
 
     for relative in (
         "crates/ci-core/Cargo.toml",

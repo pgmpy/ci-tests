@@ -121,7 +121,9 @@ mod tests {
     use crate::ci_tests::{
         ChiSquared, CressieRead, FreemanTukey, LogLikelihood, ModifiedLikelihood,
     };
-    use crate::strategy::{CITest, DataType, IndependenceRule};
+    use crate::dataset::Dataset;
+    use crate::error::CiError;
+    use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 
     fn assert_discrete_contract(test: &dyn CITest, expected_name: &str) {
         let data = super::discrete_dataset(vec![
@@ -129,15 +131,43 @@ mod tests {
             ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
         ]);
         let result = test.test(&data, 0, 1, &[]).unwrap();
-        assert!(result.statistic.unwrap().abs() < 1e-9);
-        assert_eq!(result.dof, Some(1));
-        assert!(result.p_value > 0.99);
+        let Some(statistic) = result.statistic else {
+            panic!("{expected_name}: independent data must produce a statistic");
+        };
+        assert!(
+            statistic.abs() < 1e-9,
+            "{expected_name}: expected a near-zero statistic for independent data, got {statistic}"
+        );
+        assert_eq!(
+            result.dof,
+            Some(1),
+            "{expected_name}: expected one degree of freedom for independent data"
+        );
+        assert!(
+            result.p_value > 0.99,
+            "{expected_name}: expected a p-value above 0.99 for independent data, got {}",
+            result.p_value
+        );
 
         let meta = test.meta();
-        assert_eq!(meta.name, expected_name);
-        assert_eq!(meta.data_types, &[DataType::Discrete]);
-        assert!(meta.symmetric);
-        assert_eq!(meta.rule, IndependenceRule::PValueGe);
+        assert_eq!(
+            meta.name, expected_name,
+            "{expected_name}: metadata must retain the family name"
+        );
+        assert_eq!(
+            meta.data_types,
+            &[DataType::Discrete],
+            "{expected_name}: metadata must accept discrete data"
+        );
+        assert!(
+            meta.symmetric,
+            "{expected_name}: metadata must declare a symmetric test"
+        );
+        assert_eq!(
+            meta.rule,
+            IndependenceRule::PValueGe,
+            "{expected_name}: metadata must use the p-value-greater-or-equal rule"
+        );
     }
 
     #[test]
@@ -154,5 +184,42 @@ mod tests {
         ] {
             assert_discrete_contract(test, name);
         }
+    }
+
+    #[test]
+    fn contract_failures_identify_the_family() {
+        struct WrongResult;
+
+        impl CITest for WrongResult {
+            fn test_impl(
+                &self,
+                _data: &Dataset,
+                _x: usize,
+                _y: usize,
+                _z: &[usize],
+            ) -> Result<CiResult, CiError> {
+                Ok(CiResult {
+                    statistic: Some(1.0),
+                    p_value: 1.0,
+                    dof: Some(1),
+                    effect_size: None,
+                })
+            }
+
+            fn meta(&self) -> TestMeta {
+                super::discrete_meta("wrong_result")
+            }
+        }
+
+        let panic = std::panic::catch_unwind(|| {
+            assert_discrete_contract(&WrongResult, "wrong_result");
+        })
+        .expect_err("the intentionally invalid result must violate the contract");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .expect("assertion panics include a message");
+        assert!(message.contains("wrong_result"), "{message}");
     }
 }

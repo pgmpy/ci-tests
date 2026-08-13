@@ -6,9 +6,9 @@ conditional-independence testing.
 ## API
 
 Build a [`Dataset`](src/dataset.rs) from named discrete or continuous columns,
-then bind it to a test implementing [`CITest`](src/strategy.rs). A bound test
-answers `run_test(x, y, z)` and `is_independent(x, y, z, significance_level)`
-queries without rebuilding the dataset.
+then pass it to a stateless test implementing [`CITest`](src/strategy.rs):
+`test(&data, x, y, z)` returns the test result, while
+`is_independent(&data, x, y, z, alpha)` returns an independence decision.
 
 The eight implementations are `ChiSquared`, `LogLikelihood`, `CressieRead`,
 `FreemanTukey`, `ModifiedLikelihood`, `PearsonCorrelation`, `FisherZ`, and
