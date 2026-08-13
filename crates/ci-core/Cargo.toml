@@ -2,14 +2,12 @@
 name = "ci_core"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Team <team@example.com>"]
-license = ""
+authors = ["Ankur Ankan <ankurankan@gmail.com>"]
+license = "MIT"
 description = "Conditional Independence Testing"
-repository = ""
+repository = "https://github.com/pgmpy/ci-tests"
 keywords = ["statistics", "causal-inference", "conditional-independence"]
 categories = ["science"]
-
-exclude = [""]
 
 [dependencies]
 statrs = { workspace = true }

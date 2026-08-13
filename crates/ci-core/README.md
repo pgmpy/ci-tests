@@ -1,20 +1,19 @@
 # ci-core
 
-Core Rust library implementing conditional independence tests.
+`ci-core` is the dependency-light Rust implementation of data-bound
+conditional-independence testing.
 
-## Architecture
+## API
 
-This crate uses the Strategy pattern:
+Build a [`Dataset`](src/dataset.rs) from named discrete or continuous columns,
+then bind it to a test implementing [`CITest`](src/strategy.rs). A bound test
+answers `run_test(x, y, z)` and `is_independent(x, y, z, significance_level)`
+queries without rebuilding the dataset.
 
-- **Strategy**: Each CI test implements the `CITest` trait
-- **Registry**: The `TestRegistry` maintains a map of test name → implementation
-- **Tests**: Individual test implementations in `src/tests/`
+The eight implementations are `ChiSquared`, `LogLikelihood`, `CressieRead`,
+`FreemanTukey`, `ModifiedLikelihood`, `PearsonCorrelation`, `FisherZ`, and
+`PearsonEquivalence`.
 
-## Adding a New Test
-
-1. Create a new file in `src/tests/` (e.g., `student_t.rs`)
-2. Implement the `CITest` trait
-3. Register it in `src/registry.rs`
-4. Add tests in `tests/integration/`
-
-See `CONTRIBUTING.md` in the repository root for detailed guidelines.
+The root [README](../../README.md) is the canonical API guide. See the root
+[CONTRIBUTING.md](../../CONTRIBUTING.md) for development and contribution
+instructions.

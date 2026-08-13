@@ -2,10 +2,10 @@
 name = "ci_js"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Team <team@example.com>"]
+authors = ["Ankur Ankan <ankurankan@gmail.com>"]
 license = "MIT"
 description = "wasm-pack bindings for Conditional Independence Testing"
-repository = ""
+repository = "https://github.com/pgmpy/ci-tests"
 
 [lib]
 crate-type = ["cdylib"]

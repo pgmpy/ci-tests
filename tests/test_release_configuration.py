@@ -208,6 +208,28 @@ def test_rust_distribution_dependency_tree_is_minimal() -> None:
     ).get("dependencies", {})
 
 
+def test_leaf_docs_examples_and_package_metadata_are_current() -> None:
+    crates_readme = (REPO_ROOT / "crates" / "README.md").read_text()
+    core_readme = (REPO_ROOT / "crates" / "ci-core" / "README.md").read_text()
+    example = (REPO_ROOT / "crates" / "ci-js" / "examples" / "test.html").read_text()
+    assert "Asynchronous API" not in crates_readme
+    assert "TestRegistry" not in core_readme
+    assert "src/tests/" not in core_readme
+    assert "pearson_correlation_test" not in example
+    assert "new Dataset" in example
+    assert "new PearsonCorrelation" in example
+
+    for relative in (
+        "crates/ci-core/Cargo.toml",
+        "crates/ci-python/Cargo.toml",
+        "crates/ci-js/Cargo.toml",
+    ):
+        package = tomllib.loads((REPO_ROOT / relative).read_text())["package"]
+        assert package["license"] == "MIT"
+        assert package["repository"] == "https://github.com/pgmpy/ci-tests"
+        assert "Your Team" not in " ".join(package.get("authors", []))
+
+
 def test_rust_lockfiles_preserve_unaffected_binding_versions() -> None:
     def versions(lockfile: Path, names: set[str]) -> dict[str, str]:
         packages = tomllib.loads(lockfile.read_text())["package"]

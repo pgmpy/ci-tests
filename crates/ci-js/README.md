@@ -1,28 +1,31 @@
-wasm-pack bindings
+# ci-js
+
+WebAssembly bindings for the data-bound conditional-independence API.
 
 ## Usage
 
-Install wasm-pack bindgen:
+Build the Node.js package from the repository root:
 
 ```sh
-cargo install wasm-pack
-cargo install wasm-bindgen-cli
+wasm-pack build crates/ci-js --target nodejs
 ```
 
-After installing, move to ci-core/ci-js, and build the bindings:
+```js
+import { Dataset, PearsonCorrelation } from "./pkg/ci_js.js";
+
+const data = new Dataset({
+  X: { kind: "continuous", values: [0.2, 0.8, 1.4, 2.1, 2.7] },
+  Y: { kind: "continuous", values: [1.0, 1.7, 2.5, 3.0, 3.8] },
+});
+const result = new PearsonCorrelation(data).runTest("X", "Y", []);
+```
+
+Run the JavaScript checks from the package directory:
 
 ```sh
-# Build for Node.js
-wasm-pack build --target nodejs
-
-# Build for direct usage on the web
-wasm-pack build --target web
+npm ci
+npm test
 ```
 
-### Run tests
-
-Build the bindings for Node.js and run
-
-```sh
-npx vitest
-```
+For browser builds, the complete API, and contribution guidance, see the root
+[README](../../README.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md).
