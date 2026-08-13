@@ -12,9 +12,8 @@ name: JS CI
 # shrinks the binary, so disabling it does not affect correctness. CI may
 # re-enable it once a newer wasm-opt is guaranteed on the runner.
 #
-# Tests live in crates/ci-js/tests (their own package.json + lockfile); the
-# golden parity suite (golden.test.js) covers all 80 fixture cases (81 vitest
-# test cases: 80 parametrized + 1 coverage assertion).
+# The root npm script discovers tests/*.test.js; the golden parity suite
+# (golden.test.js) covers all 80 fixture cases.
 
 on:
   push:
@@ -84,7 +83,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-          cache-dependency-path: crates/ci-js/tests/package-lock.json
+          cache-dependency-path: crates/ci-js/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -104,12 +103,13 @@ jobs:
       - name: Build WASM package
         run: wasm-pack build crates/ci-js --target nodejs
 
-      # Verified locally: `npm ci && npm test` in crates/ci-js/tests runs vitest;
-      # the golden suite covers all 80 fixture cases.
-      - name: Install test dependencies
-        working-directory: crates/ci-js/tests
+      # Verified locally: `npm ci && npm test` in crates/ci-js runs the root
+      # script, which discovers tests/*.test.js; the golden suite covers all 80
+      # fixture cases.
+      - name: Install dependencies
+        working-directory: crates/ci-js
         run: npm ci
 
       - name: Run tests
-        working-directory: crates/ci-js/tests
+        working-directory: crates/ci-js
         run: npm test

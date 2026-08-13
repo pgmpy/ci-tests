@@ -82,6 +82,28 @@ def test_js_distribution_license_and_wasm_pack_version_are_pinned() -> None:
     assert wasm_step["with"] == {"version": "0.15.0"}
 
 
+def test_js_uses_one_npm_project() -> None:
+    js = REPO_ROOT / "crates" / "ci-js"
+    assert not (js / "tests" / "package.json").exists()
+    assert not (js / "tests" / "package-lock.json").exists()
+
+    workflow = load_workflow("js.yml")
+    for job_name in ("js-lint", "js-test"):
+        job = workflow["jobs"][job_name]
+        setup = next(
+            step
+            for step in job["steps"]
+            if step.get("uses") == "actions/setup-node@v4"
+        )
+        assert setup["with"]["cache-dependency-path"] == (
+            "crates/ci-js/package-lock.json"
+        )
+        npm_steps = [
+            step for step in job["steps"] if step.get("run") in {"npm ci", "npm test"}
+        ]
+        assert all(step["working-directory"] == "crates/ci-js" for step in npm_steps)
+
+
 def test_r_workflow_checks_the_built_source_archive_with_warnings_as_errors() -> None:
     workflow = load_workflow("r.yml")
     check_step = named_step(workflow, "r-test", "Build and check source package")
