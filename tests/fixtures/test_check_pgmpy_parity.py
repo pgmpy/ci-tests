@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-
 
 CHECKER_PATH = Path(__file__).with_name("check_pgmpy_parity.py")
 
@@ -74,8 +74,17 @@ def test_missing_pgmpy_dof_is_not_compared() -> None:
     )
 
 
-def test_integration_boundary_compares_present_none_dof() -> None:
+def test_integration_boundary_compares_present_none_dof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     checker = load_checker()
+
+    def dataframe(columns: object) -> object:
+        return columns
+
+    fake_pandas = ModuleType("pandas")
+    fake_pandas.DataFrame = dataframe
+    monkeypatch.setitem(sys.modules, "pandas", fake_pandas)
 
     class FakeFisherZ:
         def __init__(self, data: object) -> None:

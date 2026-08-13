@@ -52,27 +52,29 @@ maturin develop -m crates/ci-python/Cargo.toml
 import numpy as np
 from ci_python import Dataset, ChiSquared, FisherZ, PearsonEquivalence
 
-data = Dataset({
-    "A": ("discrete", np.array([0, 1, 0, 1, 0, 1, 1, 0], dtype=float)),
-    "B": ("discrete", np.array([1, 1, 0, 0, 1, 0, 1, 0], dtype=float)),
-    "C": ("discrete", np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=float)),
-    "X": ("continuous", np.random.default_rng(0).standard_normal(8)),
-    "Y": ("continuous", np.random.default_rng(1).standard_normal(8)),
-    "Z": ("continuous", np.random.default_rng(2).standard_normal(8)),
-})
+data = Dataset(
+    {
+        "A": ("discrete", np.array([0, 1, 0, 1, 0, 1, 1, 0], dtype=float)),
+        "B": ("discrete", np.array([1, 1, 0, 0, 1, 0, 1, 0], dtype=float)),
+        "C": ("discrete", np.array([0, 0, 1, 1, 0, 1, 0, 1], dtype=float)),
+        "X": ("continuous", np.random.default_rng(0).standard_normal(8)),
+        "Y": ("continuous", np.random.default_rng(1).standard_normal(8)),
+        "Z": ("continuous", np.random.default_rng(2).standard_normal(8)),
+    }
+)
 
 # Discrete: chi-squared with Yates' correction (the default).
-chi = ChiSquared(data)                     # yates=True
-res = chi.run_test("A", "B", ["C"])        # A ⟂ B | C
+chi = ChiSquared(data)  # yates=True
+res = chi.run_test("A", "B", ["C"])  # A ⟂ B | C
 res.statistic, res.p_value, res.dof, res.effect_size
-chi.is_independent("A", "B", ["C"], significance_level=0.05)   # -> bool (p >= alpha)
+chi.is_independent("A", "B", ["C"], significance_level=0.05)  # -> bool (p >= alpha)
 
 # Continuous Fisher-Z and equivalence (TOST): every query column is continuous.
 fz = FisherZ(data)
 fz_res = fz.run_test("X", "Y", ["Z"])
 assert fz_res.dof is None
 eqv = PearsonEquivalence(data, delta_threshold=0.1)
-res = eqv.run_test("X", "Y", ["Z"])        # res.dof is None
+res = eqv.run_test("X", "Y", ["Z"])  # res.dof is None
 eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)  # -> bool (p < alpha)
 ```
 
