@@ -11,6 +11,8 @@
 
 use statrs::distribution::{ChiSquared as ChiSquaredDist, ContinuousCDF};
 
+#[cfg(test)]
+use crate::dataset::ColumnKind;
 use crate::dataset::Dataset;
 use crate::discrete::{
     power_divergence_conditional, power_divergence_unconditional, DiscreteOutcome,
@@ -101,5 +103,56 @@ pub(crate) fn discrete_meta(name: &'static str) -> TestMeta {
         data_types: &[DataType::Discrete],
         symmetric: true,
         rule: IndependenceRule::PValueGe,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn discrete_dataset(cols: Vec<(&str, Vec<f64>)>) -> Dataset {
+    Dataset::from_columns(
+        cols.into_iter()
+            .map(|(name, values)| (name.to_string(), ColumnKind::Discrete, values))
+            .collect(),
+    )
+    .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ci_tests::{
+        ChiSquared, CressieRead, FreemanTukey, LogLikelihood, ModifiedLikelihood,
+    };
+    use crate::strategy::{CITest, DataType, IndependenceRule};
+
+    fn assert_discrete_contract(test: &dyn CITest, expected_name: &str) {
+        let data = super::discrete_dataset(vec![
+            ("x", vec![1., 1., 2., 2., 1., 1., 2., 2.]),
+            ("y", vec![1., 2., 1., 2., 1., 2., 1., 2.]),
+        ]);
+        let result = test.test(&data, 0, 1, &[]).unwrap();
+        assert!(result.statistic.unwrap().abs() < 1e-9);
+        assert_eq!(result.dof, Some(1));
+        assert!(result.p_value > 0.99);
+
+        let meta = test.meta();
+        assert_eq!(meta.name, expected_name);
+        assert_eq!(meta.data_types, &[DataType::Discrete]);
+        assert!(meta.symmetric);
+        assert_eq!(meta.rule, IndependenceRule::PValueGe);
+    }
+
+    #[test]
+    fn family_members_share_contract() {
+        for (name, test) in [
+            (
+                "chi_squared",
+                &ChiSquared::new() as &dyn crate::strategy::CITest,
+            ),
+            ("log_likelihood", &LogLikelihood::new()),
+            ("cressie_read", &CressieRead::new()),
+            ("freeman_tukey", &FreemanTukey::new()),
+            ("modified_likelihood", &ModifiedLikelihood::new()),
+        ] {
+            assert_discrete_contract(test, name);
+        }
     }
 }
