@@ -5,23 +5,282 @@
 #' @useDynLib cir, .registration = TRUE
 NULL
 
-chi_squared_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__chi_squared_test, x_values, y_values, z, boolean, significance_level)
-
-log_likelihood_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__log_likelihood_test, x_values, y_values, z, boolean, significance_level)
-
-cressie_read_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__cressie_read_test, x_values, y_values, z, boolean, significance_level)
-
-pearson_correlation_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__pearson_correlation_test, x_values, y_values, z, boolean, significance_level)
-
-freeman_tukey_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__freeman_tukey_test, x_values, y_values, z, boolean, significance_level)
-
-modified_likelihood_test <- function(x_values, y_values, z, boolean, significance_level) .Call(wrap__modified_likelihood_test, x_values, y_values, z, boolean, significance_level)
-
-#' Pearson equivalence CI test (TOST): declares independence when the partial correlation
-#' lies within `[-delta_threshold, delta_threshold]`.
+#' A named, typed, immutable table of columns shared by the test handles.
 #'
-#' Pass a 0-column matrix for `z` to run unconditionally. When `boolean` is `true`,
-#' returns an independence verdict instead of the raw p-value and correlation.
-pearson_equivalence_test <- function(x_values, y_values, z, boolean, significance_level, delta_threshold) .Call(wrap__pearson_equivalence_test, x_values, y_values, z, boolean, significance_level, delta_threshold)
+#' Built from R via the `new` constructor, which takes the column names, a
+#' parallel vector of kind strings (`"discrete"` / `"continuous"`), and the
+#' columns flattened into a single `f64` matrix (column-major, one dataset
+#' column per matrix column). Discrete columns are factorized into integer
+#' codes inside the core. The handle is cheap to clone (it is `Arc`-shared) so
+#' several tests can bind the same factorization.
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Build a dataset from `names`, parallel `kinds`, and a `values` matrix
+#'whose `j`-th column holds the values of column `names[j]`.
+#'
+#'The R wrapper (`dataset()`) is responsible for coding factor/character
+#'columns to numbers before calling this, so `values` is always numeric.
+#'}
+#'
+#'\subsection{Method `n_rows`}{
+#'Number of rows (observations).
+#'}
+#'
+#'\subsection{Method `n_cols`}{
+#'Number of columns.
+#'}
+#'
+#'\subsection{Method `index_of`}{
+#'1-based index of the column named `name`, or `NA` if it is absent.
+#'}
+#'
+Dataset <- new.env(parent = emptyenv())
+
+Dataset$new <- function(names, kinds, values) .Call(wrap__Dataset__new, names, kinds, values)
+
+Dataset$n_rows <- function() .Call(wrap__Dataset__n_rows, self)
+
+Dataset$n_cols <- function() .Call(wrap__Dataset__n_cols, self)
+
+Dataset$index_of <- function(name) .Call(wrap__Dataset__index_of, self, name)
+
+#' @export
+`$.Dataset` <- function (self, name) { func <- Dataset[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.Dataset` <- `$.Dataset`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+ChiSquared <- new.env(parent = emptyenv())
+
+ChiSquared$new <- function(data, yates) .Call(wrap__ChiSquared__new, data, yates)
+
+ChiSquared$run_test <- function(x, y, z) .Call(wrap__ChiSquared__run_test, self, x, y, z)
+
+ChiSquared$is_independent <- function(x, y, z, significance_level) .Call(wrap__ChiSquared__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.ChiSquared` <- function (self, name) { func <- ChiSquared[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.ChiSquared` <- `$.ChiSquared`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+LogLikelihood <- new.env(parent = emptyenv())
+
+LogLikelihood$new <- function(data, yates) .Call(wrap__LogLikelihood__new, data, yates)
+
+LogLikelihood$run_test <- function(x, y, z) .Call(wrap__LogLikelihood__run_test, self, x, y, z)
+
+LogLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap__LogLikelihood__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.LogLikelihood` <- function (self, name) { func <- LogLikelihood[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.LogLikelihood` <- `$.LogLikelihood`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+CressieRead <- new.env(parent = emptyenv())
+
+CressieRead$new <- function(data, yates) .Call(wrap__CressieRead__new, data, yates)
+
+CressieRead$run_test <- function(x, y, z) .Call(wrap__CressieRead__run_test, self, x, y, z)
+
+CressieRead$is_independent <- function(x, y, z, significance_level) .Call(wrap__CressieRead__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.CressieRead` <- function (self, name) { func <- CressieRead[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.CressieRead` <- `$.CressieRead`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+FreemanTukey <- new.env(parent = emptyenv())
+
+FreemanTukey$new <- function(data, yates) .Call(wrap__FreemanTukey__new, data, yates)
+
+FreemanTukey$run_test <- function(x, y, z) .Call(wrap__FreemanTukey__run_test, self, x, y, z)
+
+FreemanTukey$is_independent <- function(x, y, z, significance_level) .Call(wrap__FreemanTukey__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.FreemanTukey` <- function (self, name) { func <- FreemanTukey[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.FreemanTukey` <- `$.FreemanTukey`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+ModifiedLikelihood <- new.env(parent = emptyenv())
+
+ModifiedLikelihood$new <- function(data, yates) .Call(wrap__ModifiedLikelihood__new, data, yates)
+
+ModifiedLikelihood$run_test <- function(x, y, z) .Call(wrap__ModifiedLikelihood__run_test, self, x, y, z)
+
+ModifiedLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap__ModifiedLikelihood__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.ModifiedLikelihood` <- function (self, name) { func <- ModifiedLikelihood[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.ModifiedLikelihood` <- `$.ModifiedLikelihood`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+PearsonCorrelation <- new.env(parent = emptyenv())
+
+PearsonCorrelation$new <- function(data) .Call(wrap__PearsonCorrelation__new, data)
+
+PearsonCorrelation$run_test <- function(x, y, z) .Call(wrap__PearsonCorrelation__run_test, self, x, y, z)
+
+PearsonCorrelation$is_independent <- function(x, y, z, significance_level) .Call(wrap__PearsonCorrelation__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.PearsonCorrelation` <- function (self, name) { func <- PearsonCorrelation[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.PearsonCorrelation` <- `$.PearsonCorrelation`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+FisherZ <- new.env(parent = emptyenv())
+
+FisherZ$new <- function(data) .Call(wrap__FisherZ__new, data)
+
+FisherZ$run_test <- function(x, y, z) .Call(wrap__FisherZ__run_test, self, x, y, z)
+
+FisherZ$is_independent <- function(x, y, z, significance_level) .Call(wrap__FisherZ__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.FisherZ` <- function (self, name) { func <- FisherZ[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.FisherZ` <- `$.FisherZ`
+
+#'
+#' @section Methods:
+#'\subsection{Method `new`}{
+#'Construct the handle bound to `data` with the given config.
+#'}
+#'
+#'\subsection{Method `run_test`}{
+#'Run the test for `x ⟂ y | z` (column names; `z` a character
+#'vector), returning `list(statistic, p_value, dof, effect_size)`.
+#'}
+#'
+#'\subsection{Method `is_independent`}{
+#'Decide independence at `significance_level` using the test's rule.
+#'}
+#'
+PearsonEquivalence <- new.env(parent = emptyenv())
+
+PearsonEquivalence$new <- function(data, delta_threshold) .Call(wrap__PearsonEquivalence__new, data, delta_threshold)
+
+PearsonEquivalence$run_test <- function(x, y, z) .Call(wrap__PearsonEquivalence__run_test, self, x, y, z)
+
+PearsonEquivalence$is_independent <- function(x, y, z, significance_level) .Call(wrap__PearsonEquivalence__is_independent, self, x, y, z, significance_level)
+
+#' @export
+`$.PearsonEquivalence` <- function (self, name) { func <- PearsonEquivalence[[name]]; environment(func) <- environment(); func }
+
+#' @export
+`[[.PearsonEquivalence` <- `$.PearsonEquivalence`
 
 # nolint end

@@ -2,20 +2,12 @@
 members = [
     "crates/ci-core",
     "crates/ci-python",
-    "crates/ci-r/src/rust",
     "crates/ci-js",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-anyhow = "1"
-ndarray = "0.16"
-statrs = { version = "0.18.0"}
-
-
-# Development dependencies (testing, benchmarking)
-criterion = "0.5"
-proptest = "1.0"
+statrs = { version = "0.18.0", default-features = false }
 
 # Linting/development
 [workspace.lints.rust]

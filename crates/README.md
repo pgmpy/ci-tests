@@ -1,36 +1,17 @@
 # Crates
 
-This directory contains all Rust crates in the CI Testing workspace.
+This directory contains the Rust core and language bindings for conditional
+independence testing. The root Cargo workspace contains `ci-core`, `ci-python`,
+and `ci-js`; `ci-r` is a standalone source-package workspace so that the R
+package can build outside this repository.
 
-## Structure
+## Packages
 
-- **`ci-core/`**: Core Rust implementation of CI tests
-  - Contains the Strategy + Registry pattern
-  - All statistical test logic lives here
-  - Zero dependencies on FFI or language bindings
+- [`ci-core/`](ci-core/): core Rust implementation and data-bound CI-test API.
+- [`ci-python/`](ci-python/): PyO3 bindings for Python.
+- [`ci-js/`](ci-js/): wasm-pack bindings for JavaScript and WebAssembly.
+- [`ci-r/`](ci-r/): the standalone R source package with its synchronized core
+  workspace.
 
-- **`ci-python/`**: Python bindings via PyO3
-  - Thin wrapper around ci-core
-  - Exposes registry API to Python
-
-- **`ci-r/`**: R bindings via extendr
-  - Thin wrapper around ci-core
-  - Follows R package conventions
-
-- **`ci-js/`**: JavaScript/WebAssembly bindings via wasm-pack
-  - Compiled to WASM for browser/Node.js use
-  - Asynchronous API for non-blocking execution
-
-## Working with the Workspace
-
-All crates share the same `Cargo.lock` and build directory. To build everything:
-```bash
-cargo build --workspace
-```
-
-To test a specific crate:
-```bash
-cargo test -p ci-core
-```
-
-See the root `Cargo.toml` for workspace configuration.
+For the canonical API, setup instructions, and contribution workflow, see the
+[root README](../README.md) and [contribution guide](../CONTRIBUTING.md).

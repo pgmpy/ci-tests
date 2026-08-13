@@ -2,7 +2,9 @@
 name = "ci-python"
 version = "0.1.0"
 requires-python = ">=3.10,<3.15"
-dependencies = []
+dependencies = [
+  "numpy>=1.26",
+]
 classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -22,12 +24,13 @@ build-backend = "maturin"
 module-name = "ci_python._ci_python"
 python-source = "."
 
-[tool.pyo3-stub-gen]
-generate-init-py = true
-
 [project.optional-dependencies]
 test = [
+  "mypy",
+  "pandas",
+  "pandas-stubs",
   "pytest",
+  "ruff",
 ]
 
 [tool.pytest.ini_options]
@@ -36,10 +39,9 @@ testpaths = ["test"]
 [tool.ruff]
 line-length = 120
 
-# Exclude generated files.
+# Exclude the generated native stub package.
 extend-exclude = [
     "ci_python/_ci_python",
-    "ci_python/__init__.py",
 ]
 
 [tool.ruff.lint]
@@ -48,6 +50,7 @@ ignore = [
     "ANN002",   # missing-type-args: Checks that function *args arguments have type annotations.
     "ANN003",   # missing-type-kwargs: Checks that function **kwargs arguments have type annotations.
     "COM812",   # missing-trailing-comma: Checks for the absence of trailing commas.
+    "CPY001",   # missing-copyright-notice: The project does not use per-file copyright headers.
     "E741",     # ambiguous-variable-name: Checks for the use of the characters 'l', 'O', or 'I' as variable names.
     "EM101",    # raw-string-in-exception: Checks for the use of string literals in exception constructors.
     "EM102",    # f-string-in-exception: Checks for the use of f-strings in exception constructors.
@@ -65,6 +68,9 @@ ignore = [
     "TD003",    # missing-todo-link: Checks that a TODO comment is associated with a link to a relevant issue or ticket.
     "TRY003",   # raise-vanilla-args: Checks for long exception messages that are not defined in the exception class itself.
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"test/**" = ["ANN401", "D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

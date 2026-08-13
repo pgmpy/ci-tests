@@ -14,10 +14,14 @@ through thin, idiomatic bindings for **Python, R, and JavaScript/WebAssembly**.
 
 ## Quick Start
 
+The API is **data-bound**: you bind a dataset once (its discrete columns are factorized a
+single time), then query any `X ⟂ Y | Z` against it. Each test exposes the same surface —
+`run_test(X, Y, Z)` returns a uniform result (`statistic`, `p_value`, `dof`, `effect_size`),
+and `is_independent(X, Y, Z, significance_level)` applies that test's own decision rule.
+Per-test configuration (e.g. `yates`, `delta_threshold`) lives in the constructor.
+
 Each binding compiles the Rust core from source, so you need a Rust toolchain installed
-(via [rustup](https://rustup.rs)). In every language a test takes the observation vectors
-`x` and `y` and a conditioning matrix `z` whose columns are the conditioning variables;
-pass a zero-column matrix for an unconditional test.
+(via [rustup](https://rustup.rs)).
 
 ### Python
 
@@ -29,59 +33,79 @@ maturin develop -m crates/ci-python/Cargo.toml
 ```
 
 ```python
-import numpy as np
-from ci_python import ChiSquared
+import numpy as np, pandas as pd
+from ci_python import Dataset, ChiSquared, FisherZ, PearsonEquivalence
 
-x = np.array([1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0])
-y = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
+rng = np.random.default_rng(0)
+df = pd.DataFrame({
+    "A": rng.integers(0, 2, 500), "B": rng.integers(0, 3, 500), "C": rng.integers(0, 2, 500),  # int -> discrete
+    "X": rng.standard_normal(500), "Y": rng.standard_normal(500), "Z": rng.standard_normal(500),  # float -> continuous
+})
 
-test = ChiSquared(boolean=False, significance_level=0.05)
+# Bind once; column kinds are inferred from dtypes.
+data = Dataset.from_pandas(df)
+# You can also pass the DataFrame straight to a test constructor — `ChiSquared(df)` binds it
+# implicitly (building a fresh Dataset; share one explicitly to factorize once).
 
-# Unconditional: pass an (n, 0) matrix for an empty conditioning set
-p_value, statistic, dof = test.run_test(x, y, np.empty((len(x), 0)))
-print(f"p={p_value:.4f}, chi2={statistic:.4f}, df={dof}")
+# Discrete chi-squared (Yates' correction on by default).
+chi = ChiSquared(data)
+res = chi.run_test("A", "C", ["B"])                 # A ⟂ C | B
+print(res.statistic, res.p_value, res.dof, res.effect_size)
+chi.is_independent("A", "C", ["B"], significance_level=0.05)   # -> bool (independent ⇔ p ≥ α)
 
-# Conditional: each column of z is one conditioning variable
-z = np.array([[1.0]] * 4 + [[2.0]] * 4)
-p_value, statistic, dof = test.run_test(x, y, z)
+# Continuous Pearson equivalence (TOST); per-test config is constructor-only.
+eqv = PearsonEquivalence(data, delta_threshold=0.1)
+res = eqv.run_test("X", "Y", ["Z"])
+print(res.statistic, res.p_value, res.effect_size)  # Pearson equivalence has no degrees of freedom
+eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)   # -> bool (independent ⇔ p < α)
 ```
 
-Continuous tests (`PearsonCorrelation`, `PearsonEquivalence`) share the same interface but
-return `(p_value, coefficient)`. In boolean mode (`boolean=True`) every test returns just a
-`bool` independence verdict.
+`x` / `y` accept a column name or an integer index, and `z` is a sequence of names/indices
+(default: empty conditioning set). You can also build a `Dataset` directly from a
+`{name: (kind, values)}` mapping, or pass that mapping straight to a test constructor; one
+`Dataset` can be shared across several tests so the factorization happens once.
 
 ### R
 
-Install the package from the repository root:
+Install the package from the repository root (the R package is named `cir`):
 
 ```r
 # install.packages("devtools")
 devtools::install("crates/ci-r")
 ```
 
+A `fisher_z(data)` factory accompanies the factories below, mirroring the Python/JS `FisherZ`.
+
 ```r
 library(cir)
 
-x <- c(1, 1, 2, 2, 1, 1, 2, 2)
-y <- c(1, 2, 1, 2, 1, 2, 1, 2)
+set.seed(0)
+df <- data.frame(
+  A = sample(0:1, 500, TRUE), B = sample(0:2, 500, TRUE), C = sample(0:1, 500, TRUE),  # integer -> discrete
+  X = rnorm(500), Y = rnorm(500), Z = rnorm(500)                                        # numeric -> continuous
+)
 
-# Unconditional: a 0-column matrix is an empty conditioning set
-z <- matrix(nrow = length(x), ncol = 0)
-result <- chi_squared_test(x, y, z, boolean = FALSE, significance_level = 0.05)
-cat("p =", result$p_value, " chi2 =", result$statistic, " df =", result$df, "\n")
+# Bind once; column kinds are inferred from column classes.
+data <- dataset(df)
 
-# Conditional: each column of z is one conditioning variable
-z <- matrix(c(1, 1, 1, 1, 2, 2, 2, 2), ncol = 1)
-result <- chi_squared_test(x, y, z, boolean = FALSE, significance_level = 0.05)
+# Discrete chi-squared (Yates' correction on by default).
+chi <- chi_squared(data)
+res <- run_test(chi, "A", "C", c("B"))              # A ⟂ C | B
+c(res$statistic, res$p_value, res$dof, res$effect_size)
+is_independent(chi, "A", "C", c("B"), significance_level = 0.05)   # -> logical (p >= alpha)
 
-# Boolean mode returns only an independence verdict
-verdict <- pearson_correlation_test(x, y, z, boolean = TRUE, significance_level = 0.05)
-cat("independent:", verdict$independent, "\n")
+# Continuous Pearson equivalence (TOST); config is constructor-only.
+eqv <- pearson_equivalence(df, delta_threshold = 0.1)
+res <- run_test(eqv, "X", "Y", c("Z"))
+c(res$statistic, res$p_value)                       # Pearson equivalence has no degrees of freedom
+is_independent(eqv, "X", "Y", c("Z"), significance_level = 0.05)   # -> logical (p < alpha)
+
+# Any test adapts to pcalg's indepTest(x, y, S, suffStat) interface:
+indepTest <- as_pcalg(chi)
 ```
 
-Each function returns a named list with a `kind` field: `"statistic"` (with `p_value`,
-`statistic`, `df`), `"pvalue"` (with `p_value`, `coefficient`), or `"boolean"` (with
-`independent`).
+`run_test` / `is_independent` return / consume column **names**; `z` is a character vector of
+conditioning names. A factory accepts either a pre-built `dataset()` or a raw `data.frame`.
 
 ### JavaScript
 
@@ -93,74 +117,106 @@ wasm-pack build crates/ci-js --target web      # for browsers
 wasm-pack build crates/ci-js --target nodejs   # for Node.js
 ```
 
+There are no dtypes in JS, so each column carries its `kind`. You can pass columns directly
+to a constructor — `new ChiSquared(cols)` (implicit; copies once per test object) — or build
+a shared `Dataset` first — `new ChiSquared(data)` — so the arrays cross the JS↔wasm boundary
+only once and can be reused across multiple tests:
+
 ```js
-import init, { chi_squared_test } from "./pkg/ci_js.js";
+import init, { Dataset, ChiSquared, FisherZ, PearsonEquivalence } from "./pkg/ci_js.js";
 
 await init(); // load the WebAssembly module (web target)
 
-const x = new Float64Array([1, 1, 2, 2, 1, 1, 2, 2]);
-const y = new Float64Array([1, 2, 1, 2, 1, 2, 1, 2]);
+const data = new Dataset({
+  A: { kind: "discrete",   values: [/* ... */] },  B: { kind: "discrete",   values: [/* ... */] },  C: { kind: "discrete",   values: [/* ... */] },
+  X: { kind: "continuous", values: [/* ... */] },  Y: { kind: "continuous", values: [/* ... */] },  Z: { kind: "continuous", values: [/* ... */] },
+});
 
-// Unconditional: pass an empty Float64Array; z_rows = z_cols = 0
-const [pValue, statistic, dof] = chi_squared_test(new Float64Array(0), 0, 0, x, y, false, 0.05);
-console.log(`p=${pValue.toFixed(4)}, chi2=${statistic.toFixed(4)}, df=${dof}`);
+// Discrete chi-squared (config object optional: { yates }).
+const chi = new ChiSquared(data);
+const r1 = chi.runTest("A", "C", ["B"]);            // { statistic, pValue, dof, effectSize }
+chi.isIndependent("A", "C", ["B"], 0.05);            // -> boolean (p >= alpha)
 
-// Conditional: z is a row-major flattened (z_rows x z_cols) matrix
-const z = new Float64Array([1, 1, 1, 1, 2, 2, 2, 2]);
-const [pCond] = chi_squared_test(z, 8, 1, x, y, false, 0.05);
+// Continuous Pearson equivalence (TOST); config is constructor-only.
+const eqv = new PearsonEquivalence(data, { deltaThreshold: 0.1 });
+const r2 = eqv.runTest("X", "Y", ["Z"]);            // r2.dof === null
+eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
 ```
 
-The conditioning matrix is passed flattened (`z_flat`, `z_rows`, `z_cols`) because
-WebAssembly has no native 2-D array type. Discrete tests return `[p_value, statistic, dof]`,
-continuous tests return `[p_value, coefficient]`, and boolean mode returns a `bool`.
+`runTest` / `isIndependent` take column names (`x`, `y`) and an array of conditioning names
+(`z`); the result is a plain object with `statistic`, `pValue`, `dof`, and `effectSize`
+(`null` for fields a test does not define).
 
 ## Available Tests
 
-| Test | Data type | Numeric output |
-|---|---|---|
-| `chi_squared` | Discrete | `(p_value, statistic, dof)` |
-| `log_likelihood` (G-test) | Discrete | `(p_value, statistic, dof)` |
-| `cressie_read` | Discrete | `(p_value, statistic, dof)` |
-| `freeman_tukey` | Discrete | `(p_value, statistic, dof)` |
-| `modified_likelihood` | Discrete | `(p_value, statistic, dof)` |
-| `pearson_correlation` | Continuous | `(p_value, coefficient)` |
-| `pearson_equivalence` | Continuous | `(p_value, coefficient)` |
+| Test | Data type | Constructor config | Decision rule |
+|---|---|---|---|
+| `chi_squared` | Discrete | `yates` (default `true`) | `p ≥ α` |
+| `log_likelihood` (G-test) | Discrete | `yates` (default `true`) | `p ≥ α` |
+| `cressie_read` | Discrete | `yates` (default `true`) | `p ≥ α` |
+| `freeman_tukey` | Discrete | `yates` (default `true`) | `p ≥ α` |
+| `modified_likelihood` | Discrete | `yates` (default `true`) | `p ≥ α` |
+| `pearson_correlation` | Continuous | — | `p ≥ α` |
+| `fisher_z` | Continuous | — | `p ≥ α` |
+| `pearson_equivalence` | Continuous | `delta_threshold` (default `0.1`) | `p < α` (TOST) |
 
-- **Conditioning.** Every test accepts a conditioning matrix `Z` (each column is one
-  conditioning variable). For conditional discrete tests the statistic is summed over the
-  strata defined by `Z`; for continuous tests the partial correlation is taken on the
-  regression residuals.
+- **Uniform result.** Every `run_test(X, Y, Z)` returns the same `CiResult`: `statistic`,
+  `p_value`, `dof`, and `effect_size`. Fields a test does not define are absent
+  (`None` / `NULL` / `null`). Pearson correlation reports
+  `dof = n - |Z| - 2`, while Fisher-Z and Pearson equivalence report no degrees of freedom.
+  The discrete tests report Cramér's V and the continuous tests the (partial) correlation as
+  `effect_size`.
+- **Independence decision.** `significance_level` (α) is **not** baked into the test; it is
+  passed to `is_independent(X, Y, Z, significance_level)`, which applies that test's own rule
+  from its metadata — the normal `p ≥ α` for most tests and the inverted `p < α` for the
+  equivalence test — so the caller never writes the rule.
+- **Conditioning.** Every test accepts a conditioning set `Z` (a list/vector of variables).
+  For conditional discrete tests the statistic is summed over the strata defined by `Z`; for
+  continuous tests the partial correlation is derived from a lazily cached covariance matrix
+  (O(|Z|³) per query after the first continuous test; falls back to per-query regression for
+  datasets with more than 2048 continuous columns). Pearson correlation reports
+  `dof = n - |Z| - 2`; Fisher-Z and Pearson equivalence have no degrees of freedom.
+- **Missing data.** NaN (Python/JS) and NA (R) are rejected when the dataset is bound — drop
+  or impute first. Discrete columns accept strings everywhere (factorized to integer codes
+  internally).
 - **Discrete family.** The discrete tests are members of the power-divergence family and
   differ only in the $\lambda$ parameter: `chi_squared` ($1$), `log_likelihood` ($0$),
-  `cressie_read` ($2/3$), `freeman_tukey` ($-1/2$), `modified_likelihood` ($-1$).
-- **Boolean mode.** With `boolean=true`, a test returns a single independence verdict at the
-  given `significance_level` instead of the numeric tuple.
-- **Equivalence test.** `pearson_equivalence` is an equivalence (TOST) test: it additionally
-  takes a `delta_threshold` and declares independence when the partial correlation lies
-  within that margin of zero.
-- **Naming.** Python exposes these as classes (`ChiSquared`, `LogLikelihood`, …); R and
-  JavaScript expose them as functions with a `_test` suffix (`chi_squared_test`, …).
+  `cressie_read` ($2/3$), `freeman_tukey` ($-1/2$), `modified_likelihood` ($-1$). They share a
+  `yates` option (default `true`) applying Yates' continuity correction on 2×2 (sub-)tables,
+  matching `scipy.stats.chi2_contingency` and pgmpy.
+- **Equivalence test.** `pearson_equivalence` is an equivalence (TOST) test: it takes a
+  `delta_threshold` (the equivalence margin on the correlation scale) and uses the **inverted**
+  decision rule — it declares independence when `p < α`, i.e. when the partial correlation is
+  confidently *within* that margin of zero.
+- **Naming.** Python and JavaScript expose these as classes (`ChiSquared`, `LogLikelihood`,
+  …); R exposes them as factory functions (`chi_squared`, `log_likelihood`, …).
 
 ## Package Structure & Contributing
 
 ```
-ci-core     Rust core: all test implementations and the CITest trait
-ci-python   Python bindings (PyO3)        -> import ci_python
-ci-r        R package (extendr)           -> library(cir)
-ci-js       JavaScript / WASM (wasm-pack)
+crates/ci-core     Rust core: all test implementations, the CITest trait, the Dataset, and the registry
+crates/ci-python   Python bindings (PyO3)        -> import ci_python
+crates/ci-r        R package (extendr)           -> library(cir)
+crates/ci-js       JavaScript / WASM (wasm-pack)
 ```
 
-All bindings are thin wrappers that depend only on `ci-core`, so the statistics live in a
-single place. The Rust core can also be used directly as a crate. Full API documentation is
-published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
+All three bindings are thin wrappers that depend only on `ci-core`, so the statistics live in a
+single place; each binding maps its idiomatic input (a pandas/`data.frame`/typed columns) onto
+the core `Dataset` and forwards `run_test` / `is_independent`. The Rust core can also be used
+directly as a crate. A shared golden fixture (`tests/fixtures/golden.json`) is the canonical
+cross-language numeric parity gate. The R source package carries mechanically synchronized
+copies of that fixture and `ci-core` so its built archive can be checked outside the monorepo;
+`python crates/ci-r/tools/sync_package_assets.py --check` rejects drift. Full API documentation
+is published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup,
-coding standards, and how to add a new test. Before opening a PR:
+coding standards, and how to add a new test. Each crate uses its own toolchain, so checks run
+per crate rather than across the whole workspace. For a change to `ci-core`, before opening a PR:
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo fmt --all -- --check
+cargo clippy -p ci_core --all-targets -- -D warnings
+cargo test -p ci_core          # includes the shared golden parity test
 ```
 
 ## License

@@ -1,111 +1,90 @@
-# cir
+# cir — conditional-independence tests for R
 
-R bindings for the [Conditional Independence Testing](../../README.md) library. Wraps the Rust core via [extendr](https://extendr.github.io) and accepts standard R vectors and matrices directly.
+R bindings for the `ci-core` Rust library: data-bound conditional-independence
+(CI) tests with one uniform surface. Bind a data.frame once, then run any
+number of `X ⟂ Y | Z` queries against it. See the
+[repository README](../../README.md) for the cross-language story.
 
-## Available tests
+## Install
 
-| Function | Data type | Numeric output fields |
-|---|---|---|
-| `chi_squared_test` | Discrete | `$statistic`, `$p_value`, `$df` |
-| `cressie_read_test` | Discrete | `$statistic`, `$p_value`, `$df` |
-| `freeman_tukey_test` | Discrete | `$statistic`, `$p_value`, `$df` |
-| `log_likelihood_test` | Discrete | `$statistic`, `$p_value`, `$df` |
-| `modified_likelihood_test` | Discrete | `$statistic`, `$p_value`, `$df` |
-| `pearson_correlation_test` | Continuous | `$p_value`, `$coefficient` |
-| `pearson_equivalence_test` | Continuous | `$p_value`, `$coefficient` |
-
-All tests return a named list. Every result also has a `$kind` field: `"statistic"`, `"pvalue"`, or `"boolean"` depending on the mode and test type.
-
-All tests support an optional conditioning matrix `z`. Pass a 0-column matrix for unconditional tests.
-
-## Requirements
-
-- R >= 4.2
-- Rust (stable), installed via [rustup](https://rustup.rs)
-- `devtools` and `rextendr` R packages
-
-## Installation
-
-Install the required R packages, then load the package from the repository root:
+Requires Rust 1.81 or newer ([rustup](https://rustup.rs)). From the repository root:
 
 ```r
-install.packages("pak", repos = "https://cloud.r-project.org")
-pak::pak(c("devtools", "rextendr"))
+# install.packages("devtools")
+devtools::install("crates/ci-r")
 ```
 
-```r
-setwd("crates/ci-r")
-devtools::load_all()  # compiles Rust and loads the package
-```
+> Benchmarking note: `devtools::load_all()` / `rextendr::document()` compile a
+> **debug** build. For benchmarks, install a release build:
+> `NOT_CRAN=true R CMD INSTALL crates/ci-r` and `library(cir)`.
 
-## Usage
-
-### Numeric mode
-
-Numeric mode returns the raw test statistic and p-value as a named list. Pass `boolean = FALSE`:
+## Quick start
 
 ```r
 library(cir)
 
-x <- c(1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0)
-y <- c(1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0)
-z <- matrix(0, nrow = length(x), ncol = 0)  # unconditional
+set.seed(0)
+df <- data.frame(
+  A = sample(0:1, 500, TRUE), B = sample(0:2, 500, TRUE),   # integer -> discrete
+  X = rnorm(500), Y = rnorm(500), Z = rnorm(500)            # double  -> continuous
+)
 
-result <- chi_squared_test(x, y, z, FALSE, 0.05)
-cat("p =", result$p_value, " statistic =", result$statistic, " df =", result$df, "\n")
+data <- dataset(df)        # bind once; factor/character columns are coded for you
+
+chi <- chi_squared(data)                    # Yates' correction on by default
+res <- run_test(chi, "A", "B")              # list(statistic, p_value, dof, effect_size)
+is_independent(chi, "A", "B", significance_level = 0.05)
+
+fz <- fisher_z(data)                        # the pcalg/causal-learn standard test
+run_test(fz, "X", "Y", c("Z"))              # res$dof is NULL for continuous tests
 ```
 
-For continuous data, the result contains `$p_value` and `$coefficient` instead:
+Column kinds are inferred: `integer`/`logical`/`factor`/`character` columns are
+**discrete**, `double` columns **continuous**. Missing values are rejected when
+the dataset is bound — `na.omit(df)` (or impute) first. Every factory also
+accepts a raw data.frame directly (`chi_squared(df)`).
+
+## Available tests
+
+| Factory | Data | Config | Independent when |
+|---|---|---|---|
+| `chi_squared(data, yates = TRUE)` | discrete | `yates` | `p >= alpha` |
+| `log_likelihood(data, yates = TRUE)` | discrete | `yates` | `p >= alpha` |
+| `cressie_read(data, yates = TRUE)` | discrete | `yates` | `p >= alpha` |
+| `freeman_tukey(data, yates = TRUE)` | discrete | `yates` | `p >= alpha` |
+| `modified_likelihood(data, yates = TRUE)` | discrete | `yates` | `p >= alpha` |
+| `pearson_correlation(data)` | continuous | — | `p >= alpha` |
+| `fisher_z(data)` | continuous | — | `p >= alpha` |
+| `pearson_equivalence(data, delta_threshold = 0.1)` | continuous | `delta_threshold` | `p < alpha` (TOST) |
+
+`is_independent()` applies each test's own decision rule, so the caller never
+writes it — including the equivalence test's inverted rule.
+
+## Integration
 
 ```r
-result <- pearson_correlation_test(x, y, z, FALSE, 0.05)
-cat("p =", result$p_value, " r =", result$coefficient, "\n")
+# pcalg: any test adapts to the indepTest(x, y, S, suffStat) callback shape.
+indepTest <- as_pcalg(fisher_z(dataset(df)))
+# pcalg::pc(suffStat = list(), indepTest = indepTest, labels = colnames(df), alpha = 0.05)
+
+# base-R / bnlearn-style: an htest object.
+ci_test(chi, "A", "B")
 ```
 
-### Boolean mode
-
-Boolean mode returns a list with a single `$independent` field: `TRUE` if the null hypothesis of independence is not rejected, `FALSE` if it is rejected. Pass `boolean = TRUE`:
+## Testing
 
 ```r
-result <- chi_squared_test(x, y, z, TRUE, 0.05)
-cat("independent:", result$independent, "\n")
+rextendr::document("crates/ci-r")   # recompile + regenerate wrappers
+devtools::test("crates/ci-r")       # includes the shared 80-case golden fixture
+archive <- devtools::build("crates/ci-r", manual = FALSE, vignettes = FALSE)
+devtools::check_built(archive, args = "--no-manual", error_on = "warning")
 ```
 
-### Conditional tests
+The source package includes locked, vendored Rust dependencies plus synchronized
+copies of `ci-core` and the golden fixture. From the repository root, refresh and
+verify those project-owned copies with:
 
-Pass a conditioning matrix `z` where each column is one conditioning variable:
-
-```r
-x <- c(1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0)
-y <- c(1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0)
-z <- matrix(c(0, 0, 0, 0, 1, 1, 1, 1), nrow = 8, ncol = 1)
-
-result <- chi_squared_test(x, y, z, FALSE, 0.05)
+```bash
+python crates/ci-r/tools/sync_package_assets.py --sync
+python crates/ci-r/tools/sync_package_assets.py --check
 ```
-
-To condition on multiple variables, bind them as columns with `cbind`:
-
-```r
-z <- cbind(z1, z2, z3)  # matrix with 3 conditioning columns
-result <- pearson_correlation_test(x, y, z, FALSE, 0.05)
-```
-
-### Pearson equivalence test
-
-`pearson_equivalence_test` takes one extra argument, `delta_threshold`, which sets the equivalence margin for the TOST procedure. Independence is declared when the partial correlation falls within `[-delta_threshold, delta_threshold]`:
-
-```r
-result <- pearson_equivalence_test(x, y, z, FALSE, 0.05, 0.1)
-cat("p =", result$p_value, " r =", result$coefficient, "\n")
-```
-
-## Running tests
-
-```r
-setwd("crates/ci-r")
-devtools::test()
-```
-
-## License
-
-Licensed under the [MIT license](../../LICENSE).

@@ -222,3 +222,8 @@ todo.txt
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 
 *.code-workspace
+
+# R: generated at install time by tools/config.R via configure; never track
+# (a stale tracked copy can silently force a debug build).
+crates/ci-r/src/Makevars
+crates/ci-r/src/Makevars.win

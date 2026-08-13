@@ -1,6 +1,9 @@
 ^\.vscode$
+^\.lintr$
 ^src/\.cargo$
 ^src/rust/vendor$
 ^src/rust/target$
 ^src/Makevars$
 ^src/Makevars\.win$
+^tools/__pycache__$
+^[^/]+/.*[.]pyc$

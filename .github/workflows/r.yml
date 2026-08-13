@@ -1,11 +1,23 @@
 name: R CI
 
+# Toolchain: R + rextendr (which compiles the embedded Rust crate), devtools,
+# testthat, and jsonlite. rextendr::document() regenerates the extendr wrappers,
+# then the workflow tests and checks the built source package archive.
+#
+# We use r-lib/actions/setup-r (a standard CRAN R), which does NOT require the
+# LD_LIBRARY_PATH workaround. (A *conda* R does: there you must export
+# LD_LIBRARY_PATH=$(Rscript -e 'cat(R.home("lib"))') so the embedded Rust can
+# link libR — not needed with the standard action below.)
+#
+# Commands are run from the repo root with the package path passed explicitly.
+
 on:
   push:
     branches: [master, development]
     paths:
       - 'crates/ci-r/**'
       - 'crates/ci-core/**'
+      - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
@@ -13,6 +25,7 @@ on:
     paths:
       - 'crates/ci-r/**'
       - 'crates/ci-core/**'
+      - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
@@ -43,7 +56,9 @@ jobs:
 
       - name: Check R formatting
         working-directory: crates/ci-r
-        run: styler::style_pkg(dry = "fail")
+        run: |
+          files <- setdiff(list.files("R", pattern = "[.]R$", full.names = TRUE), "R/extendr-wrappers.R")
+          styler::style_file(files, dry = "fail", include_roxygen_examples = FALSE)
         shell: Rscript {0}
 
       - name: Lint R code
@@ -69,23 +84,46 @@ jobs:
         with:
           r-version: release
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust MSRV
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.81.0
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Check packaged source and fixture drift
+        run: python crates/ci-r/tools/sync_package_assets.py --check
+
+      # jsonlite is declared in Suggests for the golden suite; install it
+      # alongside devtools/rextendr/testthat.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: crates/ci-r
-          extra-packages: any::devtools, any::rextendr
+          extra-packages: any::devtools, any::rextendr, any::testthat, any::jsonlite
 
       - name: Generate Makevars and R wrappers
-        working-directory: crates/ci-r
-        run: rextendr::document()
+        run: rextendr::document("crates/ci-r")
         shell: Rscript {0}
 
       - name: Run R tests
-        working-directory: crates/ci-r
-        run: devtools::test(reporter = "summary")
+        run: devtools::test("crates/ci-r", reporter = "summary")
+        shell: Rscript {0}
+
+      - name: Build and check source package
+        run: |
+          archive <- devtools::build(
+            "crates/ci-r",
+            path = tempdir(),
+            manual = FALSE,
+            vignettes = FALSE
+          )
+          message("Checking built source archive: ", archive)
+          devtools::check_built(
+            archive,
+            cran = FALSE,
+            manual = FALSE,
+            args = "--no-manual",
+            error_on = "warning"
+          )
         shell: Rscript {0}
