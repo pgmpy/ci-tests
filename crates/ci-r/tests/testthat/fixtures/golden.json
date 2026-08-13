@@ -8181,9 +8181,9 @@
     },
     "expected": {
       "dof": 13,
-      "effect_size": 3.35353433745e-17,
+      "effect_size": 0.0,
       "p_value": 1.0,
-      "statistic": 3.35353433745e-17
+      "statistic": 0.0
     },
     "id": "pearson-correlation-confounding-removed",
     "params": {},
@@ -8425,9 +8425,9 @@
     },
     "expected": {
       "dof": 14,
-      "effect_size": 2.77555756156e-17,
+      "effect_size": 0.0,
       "p_value": 1.0,
-      "statistic": 2.77555756156e-17
+      "statistic": 0.0
     },
     "id": "pearson-correlation-scale-offset-invariance",
     "params": {},
@@ -9106,9 +9106,9 @@
     },
     "expected": {
       "dof": null,
-      "effect_size": 3.35353433745e-17,
+      "effect_size": 0.0,
       "p_value": 1.0,
-      "statistic": 1.16169837148e-16
+      "statistic": 0.0
     },
     "id": "fisher-z-confounding-removed",
     "params": {},

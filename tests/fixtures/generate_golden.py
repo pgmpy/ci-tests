@@ -28,6 +28,7 @@ LAMBDA_BY_TEST = {
 }
 DISCRETE_LAMBDAS = LAMBDA_BY_TEST
 RHO_CLIP = 0.999999
+CORRELATION_ZERO_ATOL = 1e-15
 EXPECTED_CASE_COUNT = 80
 EXPECTED_COUNTS = {
     "chi_squared": 12,
@@ -411,6 +412,8 @@ def _partial_correlation(case: dict[str, Any]) -> tuple[float, int]:
         x_beta = np.linalg.lstsq(design, x, rcond=None)[0]
         y_beta = np.linalg.lstsq(design, y, rcond=None)[0]
         correlation = float(np.corrcoef(x - design @ x_beta, y - design @ y_beta)[0, 1])
+    if math.isclose(correlation, 0.0, abs_tol=CORRELATION_ZERO_ATOL):
+        correlation = 0.0
     return correlation, len(x) - len(case["z"]) - 2
 
 

@@ -128,6 +128,20 @@ def test_render_cases_is_strict_and_deterministic() -> None:
     assert positive["expected"]["statistic"] == 0.8
 
 
+def test_designed_orthogonal_correlations_normalize_roundoff_to_zero() -> None:
+    generator = load_generator()
+    cases = generator.build_cases()
+
+    for case_id in (
+        "pearson-correlation-orthogonal-unconditional",
+        "pearson-correlation-confounding-removed",
+        "pearson-correlation-scale-offset-invariance",
+    ):
+        expected = by_id(cases, case_id)["expected"]
+        assert expected["statistic"] == 0.0
+        assert expected["effect_size"] == 0.0
+
+
 def test_write_and_check_fixture_are_separate_operations(tmp_path: Path) -> None:
     generator = load_generator()
     rendered = generator.render_cases(generator.build_cases())

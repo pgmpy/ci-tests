@@ -82,8 +82,13 @@ impl Dataset {
         }
         let data = values.data();
         let mut cols: Vec<(String, ColumnKind, Vec<f64>)> = Vec::with_capacity(n_cols);
-        for (j, (name, kind)) in names.iter().zip(kinds.iter()).enumerate() {
-            let kind = parse_kind(kind.as_ref())?;
+        // `Strings::iter()` in extendr 0.9 constructs a slice from R's backing
+        // pointer. R 4.6 returns a null pointer for `character(0)`, which makes
+        // even a zero-length iteration abort under Rust's UB checks. Indexing
+        // also handles empty vectors without asking extendr for that pointer.
+        for j in 0..n_cols {
+            let name = names.elt(j);
+            let kind = parse_kind(kinds.elt(j).as_ref())?;
             // Column-major: column `j` occupies the contiguous slice
             // `[j*nrow, (j+1)*nrow)`.
             let start = j * nrow;
@@ -130,7 +135,9 @@ impl Dataset {
 
     /// Resolve a conditioning set (a vector of names) to 0-based core indices.
     fn columns(&self, names: &Strings) -> Result<Vec<usize>> {
-        names.iter().map(|n| self.column(n.as_ref())).collect()
+        (0..names.len())
+            .map(|i| self.column(names.elt(i).as_ref()))
+            .collect()
     }
 
     /// Resolve `x`, `y`, and the conditioning names `z` to 0-based indices.
