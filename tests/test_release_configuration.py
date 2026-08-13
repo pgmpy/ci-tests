@@ -211,6 +211,9 @@ def test_rust_distribution_dependency_tree_is_minimal() -> None:
 def test_leaf_docs_examples_and_package_metadata_are_current() -> None:
     crates_readme = (REPO_ROOT / "crates" / "README.md").read_text()
     core_readme = (REPO_ROOT / "crates" / "ci-core" / "README.md").read_text()
+    packaged_core_readme = (
+        REPO_ROOT / "crates" / "ci-r" / "src" / "rust" / "ci-core" / "README.md"
+    ).read_text()
     example = (REPO_ROOT / "crates" / "ci-js" / "examples" / "test.html").read_text()
     assert "Asynchronous API" not in crates_readme
     assert "TestRegistry" not in core_readme
@@ -218,6 +221,12 @@ def test_leaf_docs_examples_and_package_metadata_are_current() -> None:
     assert "pearson_correlation_test" not in example
     assert "new Dataset" in example
     assert "new PearsonCorrelation" in example
+
+    for readme in (core_readme, packaged_core_readme):
+        assert "https://github.com/pgmpy/ci-tests/blob/main/README.md" in readme
+        assert "https://github.com/pgmpy/ci-tests/blob/main/CONTRIBUTING.md" in readme
+        assert "../../README.md" not in readme
+        assert "../../CONTRIBUTING.md" not in readme
 
     for relative in (
         "crates/ci-core/Cargo.toml",

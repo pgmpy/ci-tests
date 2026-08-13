@@ -14,6 +14,8 @@ The eight implementations are `ChiSquared`, `LogLikelihood`, `CressieRead`,
 `FreemanTukey`, `ModifiedLikelihood`, `PearsonCorrelation`, `FisherZ`, and
 `PearsonEquivalence`.
 
-The root [README](../../README.md) is the canonical API guide. See the root
-[CONTRIBUTING.md](../../CONTRIBUTING.md) for development and contribution
-instructions.
+The root
+[README](https://github.com/pgmpy/ci-tests/blob/main/README.md) is the
+canonical API guide. See the root
+[CONTRIBUTING.md](https://github.com/pgmpy/ci-tests/blob/main/CONTRIBUTING.md)
+for development and contribution instructions.
