@@ -159,3 +159,17 @@ def test_r_source_archive_excludes_python_cache_artifacts() -> None:
     buildignore = (R_PACKAGE / ".Rbuildignore").read_text(encoding="utf-8")
     assert r"^tools/__pycache__$" in buildignore
     assert r"^[^/]+/.*[.]pyc$" in buildignore
+
+
+def test_rust_distribution_dependency_tree_is_minimal() -> None:
+    root = tomllib.loads((REPO_ROOT / "Cargo.toml").read_text())
+    r_rust = tomllib.loads((R_RUST / "Cargo.toml").read_text())
+    expected = {"version": "0.18.0", "default-features": False}
+    assert root["workspace"]["dependencies"]["statrs"] == expected
+    assert r_rust["workspace"]["dependencies"]["statrs"] == expected
+
+    js = tomllib.loads((REPO_ROOT / "crates" / "ci-js" / "Cargo.toml").read_text())
+    assert "getrandom" not in js["dependencies"]
+    assert "getrandom" not in js.get("target", {}).get(
+        'cfg(target_arch = "wasm32")', {}
+    ).get("dependencies", {})
