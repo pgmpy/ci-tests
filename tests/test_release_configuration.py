@@ -183,6 +183,17 @@ def test_r_source_archive_excludes_python_cache_artifacts() -> None:
     assert r"^[^/]+/.*[.]pyc$" in buildignore
 
 
+def test_ci_omits_unused_openblas_and_redundant_core_build() -> None:
+    docs = (REPO_ROOT / ".github" / "workflows" / "docs.yml").read_text()
+    assert "libopenblas-dev" not in docs
+
+    rust = load_workflow("rust.yml")
+    steps = rust["jobs"]["rust_test"]["steps"]
+    commands = [step.get("run", "") for step in steps if isinstance(step, dict)]
+    assert not any("cargo build -p ci_core" in command for command in commands)
+    assert any("cargo test -p ci_core" in command for command in commands)
+
+
 def test_rust_distribution_dependency_tree_is_minimal() -> None:
     root = tomllib.loads((REPO_ROOT / "Cargo.toml").read_text())
     r_rust = tomllib.loads((R_RUST / "Cargo.toml").read_text())

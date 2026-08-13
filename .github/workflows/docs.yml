@@ -30,9 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y libopenblas-dev
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -85,9 +82,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y libopenblas-dev
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -120,9 +114,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install system dependencies
-        run: sudo apt-get install -y libopenblas-dev
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

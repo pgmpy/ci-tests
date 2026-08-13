@@ -97,10 +97,5 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # Verified locally: `cargo test -p ci_core` (includes the 80-case golden
-      # parity test in crates/ci-core/tests/golden.rs).
-      - name: Build
-        run: cargo build -p ci_core --verbose
-
       - name: Run tests
         run: cargo test -p ci_core --verbose
