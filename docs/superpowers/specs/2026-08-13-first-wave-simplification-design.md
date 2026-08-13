@@ -30,8 +30,10 @@ R source-package self-containment guarantee.
   `crates/ci-js/tests/package-lock.json`.
 - Run Vitest from `crates/ci-js`; test discovery must continue to execute both
   `tests/api.test.js` and `tests/golden.test.js` in the Node environment.
-- Update JavaScript CI to perform one clean install, lint/format checks, the
-  WASM build, and the root test script.
+- Update both existing JavaScript CI jobs to install from the root lockfile:
+  the lint job performs formatting and ESLint checks, while each OS test job
+  builds WASM and runs the root test script. Separate runners still perform
+  separate clean installs; no `node_modules` artifact is shared across OSes.
 
 ### 3. Remove redundant CI work
 
