@@ -173,3 +173,41 @@ def test_rust_distribution_dependency_tree_is_minimal() -> None:
     assert "getrandom" not in js.get("target", {}).get(
         'cfg(target_arch = "wasm32")', {}
     ).get("dependencies", {})
+
+
+def test_rust_lockfiles_preserve_unaffected_binding_versions() -> None:
+    def versions(lockfile: Path, names: set[str]) -> dict[str, str]:
+        packages = tomllib.loads(lockfile.read_text())["package"]
+        return {
+            package["name"]: package["version"]
+            for package in packages
+            if package["name"] in names
+        }
+
+    assert versions(
+        REPO_ROOT / "Cargo.lock",
+        {
+            "js-sys",
+            "thiserror",
+            "thiserror-impl",
+            "wasm-bindgen",
+            "wasm-bindgen-macro",
+            "wasm-bindgen-macro-support",
+            "wasm-bindgen-shared",
+        },
+    ) == {
+        "js-sys": "0.3.99",
+        "thiserror": "2.0.18",
+        "thiserror-impl": "2.0.18",
+        "wasm-bindgen": "0.2.122",
+        "wasm-bindgen-macro": "0.2.122",
+        "wasm-bindgen-macro-support": "0.2.122",
+        "wasm-bindgen-shared": "0.2.122",
+    }
+    assert versions(
+        R_RUST / "Cargo.lock", {"readonly", "thiserror", "thiserror-impl"}
+    ) == {
+        "readonly": "0.2.13",
+        "thiserror": "2.0.20",
+        "thiserror-impl": "2.0.20",
+    }
