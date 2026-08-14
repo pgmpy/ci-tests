@@ -1,0 +1,299 @@
+# Release Readiness and Simplification Design
+
+**Date:** 2026-08-14
+
+**Status:** Approved for implementation (Stage A); Stages B–D specified, not scheduled
+
+## Context
+
+The workspace implements eight conditional-independence tests once in a Rust
+core and exposes them through PyO3, wasm-bindgen and extendr bindings, gated by
+an 80-case cross-language golden fixture. The statistics are sound and all four
+suites pass today. Nothing, however, has ever been published, and an audit of
+the four publishable artifacts found that none of them can be published as they
+stand.
+
+Two of the four package names are already occupied on their target registries.
+Two of the four published artifacts would ship a test that cannot run. Neither
+the crate nor the Python distribution ships the licence it declares. Push-mode
+CI is bound to branches that do not exist, so merges to the default branch run
+no tests at all.
+
+This design covers the work to make all four packages releasable, plus the
+architectural simplification that the same audit identified. The work is
+divided into four stages; Stage A is specified for immediate implementation and
+Stages B–D are specified for later sessions.
+
+## Verified Baseline
+
+All four suites pass before any change, so every later failure is attributable:
+
+| Suite | Result |
+|---|---|
+| `cargo test -p ci_core` | 60 unit + 1 golden (80 cases) + 1 doctest, all pass |
+| `pytest crates/ci-python/test` | 111 pass |
+| `devtools::test("crates/ci-r")` | api + golden, all pass |
+| `wasm-pack build` + `npm test` | 103 pass (2 files) |
+
+`rextendr::document("crates/ci-r")` produces no git diff against the committed
+tree, confirming the checked-in generated files are in sync with their sources.
+
+## Decisions
+
+These were settled with the maintainer before this document was written.
+
+1. **Scope of breakage.** Converge only where the four surfaces genuinely
+   disagree. Each language keeps its idiomatic constructor and naming
+   conventions.
+2. **Name.** `citest` on all four registries. Directories are renamed to match.
+3. **Version.** `0.1.0`, from a single source, published directly (no release
+   candidate).
+4. **Copyright.** `The pgmpy Developers`. GiPHouse and Ankur Ankan are authors;
+   Ankur Ankan is maintainer; pgmpy is copyright holder.
+5. **`tests/test_release_configuration.py`.** Deleted; its two genuine contracts
+   move into `sync_package_assets.py --check`.
+6. **Discrete family.** Macro-generate the five power-divergence types, leaving
+   the public Rust API byte-identical.
+7. **Sequencing.** Stage A implemented now; B, C and D specified here and
+   scheduled separately.
+
+## Naming
+
+`cir` is occupied on CRAN by an unrelated package at version 2.5.1, and `ci-js`
+is occupied on npm. `citest` was verified free on crates.io, PyPI, npm and CRAN.
+It is also valid under the strictest of the four naming rules (CRAN: letters and
+digits only, must begin with a letter).
+
+| Path | Crate | Registry identity |
+|---|---|---|
+| `crates/citest` | `citest` | crates.io `citest` |
+| `crates/citest-python` | `citest-python` (`publish = false`) | PyPI `citest`, `import citest` |
+| `crates/citest-js` | `citest-js` (`publish = false`) | npm `citest` |
+| `crates/citest-r` | `citest-r` (`publish = false`) | CRAN `citest`, `library(citest)` |
+
+The R package additionally requires renaming `R/cir.R`, `src/cir-win.def`, the
+S3 classes `cir_dataset` and `cir_test`, the `R_init_cir` entry point, and
+regenerating `NAMESPACE`, `man/*.Rd` and `R/extendr-wrappers.R`.
+
+## Stage A — Identity and Release Plumbing
+
+Stage A is the blocker: no package can be published until it lands. It touches
+many files but changes no statistical behaviour and no binding API.
+
+### A1. Rename
+
+Rename the four directories and every reference to them: workspace members,
+workflow path filters, `sync_package_assets.py` constants, `.Rbuildignore`,
+README, CONTRIBUTING, and the R package's internal identifiers listed above.
+
+The rename is committed separately from every behavioural change so that review
+can treat it as mechanical.
+
+### A2. Authorship and copyright
+
+The current state is inconsistent rather than uniformly wrong: the three Cargo
+manifests credit only Ankur Ankan, the R package credits only GIP House, and
+`pyproject.toml` and the JS `package.json` credit nobody. All four converge on
+naming both parties.
+
+- Root `LICENSE`: `Copyright (c) 2026 The pgmpy Developers`. It currently names
+  no holder at all.
+- `crates/citest-r/LICENSE`: `COPYRIGHT HOLDER: The pgmpy Developers`.
+- R `Authors@R`:
+  ```r
+  c(person("GiPHouse", email = "giphouse@example.com", role = "aut"),
+    person("Ankur", "Ankan", email = "ankurankan@gmail.com",
+           role = c("aut", "cre")),
+    person("The pgmpy Developers", role = "cph"))
+  ```
+- Cargo `authors` and `pyproject.toml` `authors`: both parties.
+- README badges and the documentation URL move from
+  `GiPHouse/Conditional-Independence-Testing` to `pgmpy/ci-tests`.
+
+**Known pre-submission item.** `giphouse@example.com` uses a domain reserved by
+RFC 2606 and can never receive mail. It is retained here at the maintainer's
+instruction and does not block CRAN mechanically, because CRAN validates the
+maintainer (`cre`) address, which is a real one. It must be replaced with a
+deliverable address before CRAN submission.
+
+### A3. One version
+
+Add `[workspace.package] version = "0.1.0"` to the root manifest; each crate
+uses `version.workspace = true`. Python takes its version from the crate through
+maturin. The npm identity is generated from Cargo by wasm-pack. The R
+`DESCRIPTION` carries `Version: 0.1.0` and is asserted equal by the release
+workflow.
+
+`crates/citest-js/package.json` is a development harness, not the published
+package: it becomes `"private": true` and drops the conflicting `1.0.0` version,
+its `license`, and its `description`.
+
+### A4. Licence in every artifact
+
+Add a `LICENSE` file to the core crate and the Python distribution, and declare
+it so that it ships. The npm tarball and the R package already carry one.
+
+### A5. Packaged tests can run
+
+`crates/ci-core/tests/golden.rs:67` reads
+`CARGO_MANIFEST_DIR/../../tests/fixtures/golden.json`, a path outside the
+package. `cargo package` therefore produces a crate whose test suite cannot run.
+
+The canonical fixture moves to `crates/citest/tests/fixtures/golden.json`. The
+generator at `tests/fixtures/generate_golden.py` writes to the new canonical
+location; `sync_package_assets.py` continues to copy it into the R package.
+Python and JS locate it relative to the repository and skip with an explicit
+reason when absent, since their published artifacts do not ship tests.
+
+### A6. CI that runs
+
+- `branches: [master, development]` becomes `[main]` in `rust.yml`,
+  `python.yml`, `js.yml` and `r.yml`. The default branch is `main`, so push CI
+  currently never runs; only pull-request triggers fire.
+- `r.yml` invokes `sync_package_assets.py` without setting up Python. Add the
+  Python setup step.
+
+### A7. Delete the release-configuration test
+
+`tests/test_release_configuration.py` (289 lines) asserts exact CI step names
+and `with:` blocks, exact transitive lockfile pins, README prose, and the
+placeholder copyright holder it is meant to prevent. It breaks on any legitimate
+change and cannot serve as a release gate.
+
+It is deleted. Its two genuine contracts move into
+`sync_package_assets.py --check`, which `r.yml` already runs:
+
+- the vendor archive matches the locked registry crate set and every vendored
+  crate declares a licence;
+- `THIRD-PARTY-NOTICES` covers the redistributed extendr crates.
+
+### A8. Release automation
+
+- `CHANGELOG.md` in Keep a Changelog format with a `0.1.0` entry.
+- `.github/workflows/release.yml`, triggered on `v*` tags, which first asserts
+  that the crate, Python, npm and R versions agree and match the tag, then
+  publishes to crates.io, PyPI and npm. CRAN submission remains manual, as it
+  always is.
+
+### A9. Distribution metadata
+
+- `pyproject.toml` gains `description`, `readme`, `license`, `authors`,
+  `urls`, `keywords` and the missing classifiers; `py.typed` is added so the
+  hand-written stub is visible to type checkers.
+- The npm package must ship wasm and JavaScript. Publishing from
+  `crates/citest-js` today would ship Rust source with no entry point; the
+  published artifact is the wasm-pack output in `pkg/`, and the release workflow
+  publishes from there.
+
+### A10. Documentation truth-up
+
+- CONTRIBUTING's instruction to run JS tests "from `crates/ci-js/tests`"
+  describes a directory removed by an earlier consolidation.
+- CONTRIBUTING references `docs/api-examples.md`, which does not exist.
+- No README documents installing from a registry; every path is
+  build-from-source. Add registry install instructions.
+
+### Stage A acceptance
+
+All four suites pass, with the R suite run through the `expert` conda
+environment. `cargo package -p citest` produces a crate whose tests run.
+`python -c "import citest"` works from a built wheel. `wasm-pack build` output
+is importable under the new name. `sync_package_assets.py --check` passes and
+covers the migrated vendor and notice contracts.
+
+## Stage B — Core Simplification
+
+Confined to the core crate; no binding changes.
+
+- Macro-generate the five power-divergence types. `chi_squared.rs`,
+  `cressie_read.rs`, `freeman_tukey.rs`, `log_likelihood.rs` and
+  `modified_likelihood.rs` are byte-identical apart from a name string and a
+  `LAMBDA` constant, at roughly 52 lines each. The generated public API is
+  unchanged: the types keep their names, their `yates` field, their derives and
+  their per-type documentation.
+- Add a continuous counterpart to `discrete_common.rs`. `FisherZ` and
+  `PearsonEquivalence` duplicate the whole Fisher-z preamble: clip `rho`,
+  compute `sqrt(n - |Z| - 3)`, construct the standard normal.
+- Tighten visibility. `pub mod discrete` exports no public items. Every
+  `ci_tests` submodule is public *and* re-exported, giving each test two public
+  paths.
+- Validate configuration at construction rather than query time.
+  `PearsonEquivalence { delta_threshold: 0.0 }` constructs successfully and then
+  fails on every query with `CiError::DegenerateData` — the wrong variant, since
+  the fault is configuration, not data.
+- Remove unreachable error paths and correct documentation that contradicts the
+  code, including the `Dataset::discrete` doc block attached to the private
+  `Dataset::column`, and `gram.rs` defending against non-finite inputs that
+  `Dataset::from_columns` already rejects.
+
+## Stage C — Binding Convergence
+
+Fix only genuine disagreements; keep idiomatic shapes.
+
+- **Python error model.** Column-reference failures raise `ValueError` while
+  query and kind failures raise `CiError`, so `except CiError` silently misses
+  half the failure modes. Make `CiError` inherit from `ValueError` and raise it
+  uniformly; both spellings then catch everything, and no existing code breaks.
+- **Stub drift.** The hand-written `.pyi` has already drifted from
+  `src/lib.rs` and nothing in CI checks it. Add a consistency gate.
+- **R has no `meta()`.** Python and JS expose it; R does not, and therefore
+  re-hardcodes the inverted decision rule as the literal
+  `.cir_inverted_rule_tests <- c("pearson_equivalence")`. A ninth `PValueLt`
+  test would silently invert every pcalg edge decision. Expose `meta()` in R and
+  derive the rule from it.
+- **Registry is unreachable.** `registry::{all_metas, make_default}` documents
+  itself as the single source of truth but has no consumer outside its own unit
+  tests; all four bindings re-enumerate the eight tests independently. Expose
+  test enumeration in every binding rather than removing the module: the R
+  `meta()` work above needs the same machinery, and enumeration is a genuine
+  affordance for callers who want to discover the available tests by name.
+- **`z` handling diverges.** `z` is optional in Python and R but mandatory in
+  JS, where omitting it throws an unactionable glue `TypeError`. A bare-string
+  `z` is rejected in Python, treated as one conditioning column in R, and split
+  into characters in JS.
+- **`index_of` base differs.** 1-based in R, 0-based in Python and JS. Do *not*
+  converge this: 1-based indexing is correct R idiom and 0-based is correct for
+  Python and JS, so this is correct localization rather than divergence. Document
+  the difference explicitly in each binding's reference instead.
+- **JS types are `any` at every result boundary.** Serialize `CiResult` and
+  `TestMeta` with serde instead of the hand-written `Reflect` boilerplate, and
+  emit real TypeScript types. Add an `exports` map and an ESM entry.
+
+## Stage D — Test and CI Architecture
+
+- **The four golden harnesses are not the same gate.** R compares with a
+  *relative* tolerance where the other three use an absolute one, making it
+  roughly 26× looser at the fixture's largest statistic. Unify the comparison
+  policy.
+- **The fixture is tracked twice**, at roughly 287 KB per copy for 80 cases,
+  and the generator writes only one of the two. Make the R copy a build artifact
+  of the sync tool rather than an independently tracked file.
+- **The pgmpy parity check never runs in CI**, although detecting drift from
+  pgmpy is the reason it exists.
+- **The Python job rebuilds the extension nine times** for what is a single
+  abi3 wheel.
+- **The fixture-currency check runs twice** in `python.yml`, once as a pytest
+  and once as a CLI invocation.
+
+## Risks and Constraints
+
+- **R is verifiable locally but only through conda.** R 4.4.2 lives in the
+  `expert` conda environment. Because it is a conda R rather than a system R,
+  the embedded Rust fails to link `libR` unless `LD_LIBRARY_PATH` includes
+  `R.home("lib")`. CI is unaffected: it uses a standard CRAN R.
+- **The rename produces a large mechanical diff.** It is isolated in its own
+  commit, ahead of every behavioural change.
+- **The R package exceeds CRAN's 5 MB installed-size threshold** (measured at
+  6.2 MB), partly because the R sub-workspace silently drops the repository's
+  LTO release profile. This is a Stage D concern and does not block the other
+  three registries.
+- **`rextendr::document()` is deprecated** in favour of `devtools::document()`;
+  `r.yml` still calls the deprecated form.
+
+## Out of Scope
+
+No statistical behaviour changes. No golden fixture value changes. The R source
+package keeps its vendored copy of the core crate and its vendored crate
+archive, both of
+which are required for the built archive to compile outside the monorepo without
+network access.
