@@ -43,7 +43,7 @@ impl GramCache {
         let mut col_to_dense = vec![None; n_cols];
         let mut continuous: Vec<&[f64]> = Vec::new();
         for (col, slot) in col_to_dense.iter_mut().enumerate() {
-            if let Ok(values) = data.continuous(col) {
+            if let Some(values) = data.continuous_values(col) {
                 *slot = Some(u32::try_from(continuous.len()).expect("p bounded by MAX_GRAM_COLS"));
                 continuous.push(values);
             }

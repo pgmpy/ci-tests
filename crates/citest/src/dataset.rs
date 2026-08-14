@@ -82,7 +82,6 @@ pub(crate) enum Column {
 /// their integer index (see [`Dataset::index_of`]).
 #[derive(Debug)]
 pub struct Dataset {
-    names: Vec<String>,
     name_to_index: HashMap<String, usize>,
     columns: Vec<Column>,
     n_rows: usize,
@@ -130,7 +129,6 @@ impl Dataset {
             }
         }
 
-        let mut names = Vec::with_capacity(cols.len());
         let mut name_to_index = HashMap::with_capacity(cols.len());
         let mut columns = Vec::with_capacity(cols.len());
 
@@ -164,17 +162,16 @@ impl Dataset {
                     }
                 }
             };
-            if name_to_index.insert(name.clone(), idx).is_some() {
+            if name_to_index.contains_key(&name) {
                 return Err(CiError::DimensionMismatch(format!(
                     "duplicate column name `{name}`; column names must be unique"
                 )));
             }
-            names.push(name);
+            name_to_index.insert(name, idx);
             columns.push(column);
         }
 
         Ok(Self {
-            names,
             name_to_index,
             columns,
             n_rows,
@@ -195,24 +192,12 @@ impl Dataset {
         self.columns.len()
     }
 
-    /// Name of the column at `index`, if any.
-    #[must_use]
-    pub fn name_of(&self, index: usize) -> Option<&str> {
-        self.names.get(index).map(String::as_str)
-    }
-
     /// Index of the column named `name`, if present.
     #[must_use]
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.name_to_index.get(name).copied()
     }
 
-    /// Read a discrete column as `(codes, cardinality)`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CiError::UnknownColumn`] if `index` is out of range, or
-    /// [`CiError::WrongColumnKind`] if the column is continuous.
     /// Borrow the column at `index`, mapping an out-of-range index to
     /// [`CiError::UnknownColumn`].
     fn column(&self, index: usize) -> Result<&Column, CiError> {
@@ -221,6 +206,12 @@ impl Dataset {
             .ok_or_else(|| CiError::UnknownColumn(format!("column index {index}")))
     }
 
+    /// Read a discrete column as `(codes, cardinality)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CiError::UnknownColumn`] if `index` is out of range, or
+    /// [`CiError::WrongColumnKind`] if the column is continuous.
     pub(crate) fn discrete(&self, index: usize) -> Result<(&[usize], usize), CiError> {
         match self.column(index)? {
             Column::Discrete { codes, cardinality } => Ok((codes, *cardinality)),
@@ -230,18 +221,15 @@ impl Dataset {
         }
     }
 
-    /// Read a continuous column's values.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CiError::UnknownColumn`] if `index` is out of range, or
-    /// [`CiError::WrongColumnKind`] if the column is discrete.
-    pub(crate) fn continuous(&self, index: usize) -> Result<&[f64], CiError> {
-        match self.column(index)? {
-            Column::Continuous { values } => Ok(values),
-            Column::Discrete { .. } => Err(CiError::WrongColumnKind(format!(
-                "column {index} is discrete but a continuous column was required"
-            ))),
+    /// The values of the column at `index` when it is continuous, or `None`
+    /// when the index is out of range or the column is discrete. Callers that
+    /// must distinguish the two failure modes (the continuous tests) go
+    /// through [`crate::gram::GramCache`], whose lookup reports them as
+    /// [`CiError::WrongColumnKind`] / [`CiError::UnknownColumn`].
+    pub(crate) fn continuous_values(&self, index: usize) -> Option<&[f64]> {
+        match self.columns.get(index)? {
+            Column::Continuous { values } => Some(values),
+            Column::Discrete { .. } => None,
         }
     }
 
@@ -305,7 +293,6 @@ impl Clone for Dataset {
     /// partitions) start fresh in the clone and are rebuilt on demand.
     fn clone(&self) -> Self {
         Self {
-            names: self.names.clone(),
             name_to_index: self.name_to_index.clone(),
             columns: self.columns.clone(),
             n_rows: self.n_rows,
@@ -394,7 +381,7 @@ mod tests {
             vec![1.5, 2.5, 3.5],
         )])
         .unwrap();
-        assert_eq!(ds.continuous(0).unwrap(), &[1.5, 2.5, 3.5]);
+        assert_eq!(ds.continuous_values(0).unwrap(), &[1.5, 2.5, 3.5]);
         assert_eq!(ds.index_of("x"), Some(0));
         assert_eq!(ds.index_of("nope"), None);
     }
@@ -417,7 +404,8 @@ mod tests {
             vec![1.0, 2.0],
         )])
         .unwrap();
-        assert!(matches!(ds.continuous(0), Err(CiError::WrongColumnKind(_))));
+        assert!(ds.continuous_values(0).is_none(), "discrete column");
+        assert!(ds.continuous_values(9).is_none(), "out of range");
         assert!(matches!(ds.discrete(9), Err(CiError::UnknownColumn(_))));
     }
 

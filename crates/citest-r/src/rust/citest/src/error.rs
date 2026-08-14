@@ -6,21 +6,24 @@ use thiserror::Error;
 /// running a conditional-independence test.
 #[derive(Debug, Error)]
 pub enum CiError {
-    /// Columns (or X/Y/Z vectors) did not share a common length.
+    /// Columns did not share a common length, or two columns shared a name
+    /// (names must be unique).
     #[error("dimension mismatch: {0}")]
     DimensionMismatch(String),
 
-    /// The data is degenerate for the requested test (e.g. a column with zero
-    /// variance for a correlation test, or too few rows).
+    /// The data is degenerate or unsupported for the requested test (e.g. a
+    /// column with zero variance for a correlation test, too few rows, or more
+    /// continuous columns than the Gaussian cache supports).
     #[error("degenerate data: {0}")]
     DegenerateData(String),
 
-    /// A numerical routine failed (e.g. distribution construction or least
-    /// squares).
+    /// A numerical routine failed (e.g. distribution construction, or a
+    /// rank-deficient conditioning set in the partial-correlation solve).
     #[error("numeric error: {0}")]
     Numeric(String),
 
-    /// A column name was requested that does not exist in the dataset.
+    /// A column reference (name or index) did not resolve to any column in
+    /// the dataset.
     #[error("unknown column: {0}")]
     UnknownColumn(String),
 

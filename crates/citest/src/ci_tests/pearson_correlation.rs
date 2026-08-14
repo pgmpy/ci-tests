@@ -15,11 +15,6 @@ use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 /// it never affects a real partial correlation.
 const VARIANCE_REL_EPS: f64 = 1e-12;
 
-/// Clipping bound for `rho` before the Fisher z-transform: `[-1 + EPS, 1 - EPS]`.
-/// Matches the reference's `np.clip(rho, -0.999999, 0.999999)`. Shared by the
-/// Fisher-z and equivalence tests.
-pub(crate) const RHO_CLIP_EPS: f64 = 1e-6;
-
 /// Pearson correlation test. With a non-empty conditioning set it reports the
 /// partial correlation given Z.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

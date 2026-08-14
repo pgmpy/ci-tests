@@ -9,9 +9,13 @@
 
 use statrs::distribution::Normal;
 
-use crate::ci_tests::pearson_correlation::{partial_correlation, RHO_CLIP_EPS};
+use crate::ci_tests::pearson_correlation::partial_correlation;
 use crate::dataset::Dataset;
 use crate::error::CiError;
+
+/// Clipping bound for `rho` before the Fisher z-transform: `[-1 + EPS, 1 - EPS]`.
+/// Matches the reference's `np.clip(rho, -0.999999, 0.999999)`.
+pub(crate) const RHO_CLIP_EPS: f64 = 1e-6;
 
 /// The Fisher z-transform quantities shared by the two continuous tests.
 pub(crate) struct FisherZInputs {
