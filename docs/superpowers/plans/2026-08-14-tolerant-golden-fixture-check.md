@@ -38,8 +38,12 @@ def test_check_fixture_tolerates_expected_numeric_roundoff(tmp_path: Path) -> No
     rendered = generator.render_cases(generator.build_cases())
     committed = json.loads(rendered)
     expected = committed[0]["expected"]
-    for field in ("statistic", "p_value", "effect_size"):
-        expected[field] += 5e-8
+    for field, delta in {
+        "statistic": 5e-8,
+        "p_value": -5e-8,
+        "effect_size": 5e-8,
+    }.items():
+        expected[field] += delta
     output = tmp_path / "golden.json"
     output.write_text(
         json.dumps(committed, indent=2, sort_keys=True, allow_nan=False) + "\n",
