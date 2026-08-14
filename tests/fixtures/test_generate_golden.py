@@ -203,6 +203,9 @@ def test_check_fixture_rejects_meaningful_or_structural_drift(
     output.write_text("{", encoding="utf-8")
     assert generator.check_fixture(output, rendered) is False
 
+    output.write_bytes(b"\xff")
+    assert generator.check_fixture(output, rendered) is False
+
 
 def test_cli_check_mode_never_creates_or_rewrites_output(tmp_path: Path) -> None:
     generator = load_generator()

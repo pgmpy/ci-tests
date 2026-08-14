@@ -677,7 +677,7 @@ def check_fixture(path: Path, rendered: str) -> bool:
     try:
         committed = json.loads(path.read_text(encoding="utf-8"))
         generated = json.loads(rendered)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return False
     return _fixture_values_match(committed, generated)
 
