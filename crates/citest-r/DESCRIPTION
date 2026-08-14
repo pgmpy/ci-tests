@@ -2,9 +2,9 @@ Package: citest
 Title: Conditional Independence Testing
 Version: 0.1.0
 Authors@R: c(
-    person("GiPHouse", role = "aut"),
     person("Ankur", "Ankan", email = "ankurankan@gmail.com",
            role = c("aut", "cre")),
+    person("GiPHouse", role = "aut"),
     person("The pgmpy Developers", role = "cph"),
     person("Authors of the dependency Rust crates", role = "aut",
            comment = "see AUTHORS file"))
