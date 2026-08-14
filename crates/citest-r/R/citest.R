@@ -30,7 +30,7 @@
 #'
 #' @param col A single data.frame column.
 #' @return A scalar string, `"discrete"` or `"continuous"`.
-#' @keywords internal
+#' @noRd
 .citest_infer_kind <- function(col) {
   if (
     is.factor(col) || is.character(col) || is.logical(col) || is.integer(col)
@@ -54,7 +54,7 @@
 #'
 #' @param col A single data.frame column.
 #' @return A numeric vector the same length as `col`.
-#' @keywords internal
+#' @noRd
 .citest_code_column <- function(col) {
   if (is.factor(col)) {
     as.numeric(as.integer(col))
@@ -125,7 +125,7 @@ print.citest_dataset <- function(x, ...) {
 #'
 #' @param data A `citest_dataset` or a data.frame.
 #' @return A `citest_dataset`.
-#' @keywords internal
+#' @noRd
 .citest_as_dataset <- function(data) {
   if (inherits(data, "citest_dataset")) {
     data
@@ -144,7 +144,7 @@ print.citest_dataset <- function(x, ...) {
 #' @param ds The bound `citest_dataset` (carries column names for pcalg mapping).
 #' @param name The test's stable name (e.g. `"chi_squared"`).
 #' @return An object of class `citest_test`.
-#' @keywords internal
+#' @noRd
 .citest_make_test <- function(handle, ds, name) {
   structure(
     list(handle = handle, dataset = ds, name = name),
@@ -339,7 +339,7 @@ is_independent <- function(
 #'
 #' @param z The `z` argument as supplied by the caller.
 #' @return A character vector (possibly empty).
-#' @keywords internal
+#' @noRd
 .citest_as_names <- function(z) {
   if (is.null(z)) {
     character()

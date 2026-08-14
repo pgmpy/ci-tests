@@ -18,8 +18,27 @@ Column kinds are inferred from the data.frame: \code{integer}/\code{logical}/\co
 \strong{continuous}. Discrete factor/character columns are coded to integer codes
 on the R side before they reach the Rust core (which only handles numbers).
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/pgmpy/ci-tests}
+  \item Report bugs at \url{https://github.com/pgmpy/ci-tests/issues}
+}
+
+}
 \author{
-\strong{Maintainer}: GIP House \email{giphouse@example.com}
+\strong{Maintainer}: Ankur Ankan \email{ankurankan@gmail.com}
+
+Authors:
+\itemize{
+  \item GiPHouse \email{giphouse@example.com}
+  \item Authors of the dependency Rust crates (see AUTHORS file)
+}
+
+Other contributors:
+\itemize{
+  \item The pgmpy Developers [copyright holder]
+}
 
 }
 \keyword{internal}
