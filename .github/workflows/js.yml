@@ -17,7 +17,7 @@ name: JS CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [main]
     paths:
       - "crates/citest-js/**"
       - "crates/citest/**"

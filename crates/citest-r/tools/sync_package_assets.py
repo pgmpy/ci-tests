@@ -69,7 +69,7 @@ def _workspace_drift(root: Path) -> list[str]:
     root_manifest = tomllib.loads((root / ROOT_MANIFEST).read_text(encoding="utf-8"))
     r_manifest = tomllib.loads((root / R_RUST_MANIFEST).read_text(encoding="utf-8"))
     errors: list[str] = []
-    for key in ("dependencies", "lints"):
+    for key in ("package", "dependencies", "lints"):
         expected = root_manifest["workspace"].get(key)
         actual = r_manifest["workspace"].get(key)
         if actual != expected:

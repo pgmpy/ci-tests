@@ -13,7 +13,7 @@ name: Rust CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [main]
     paths:
       - 'crates/citest/**'
       - 'crates/citest-python/**'

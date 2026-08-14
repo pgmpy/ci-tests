@@ -88,9 +88,18 @@ assert_close <- function(actual, expected, field, case_id) {
     }
     return(invisible())
   }
-  expect_equal(act, exp,
-    tolerance = tol,
-    label = sprintf("%s: %s got %s, expected %s", case_id, field, act, exp)
+  # Use an explicit ABSOLUTE bound. `expect_equal(tolerance =)` routes under
+  # testthat 3e to waldo, which switches to a *relative* difference once
+  # mean(abs(expected)) exceeds the tolerance. At the fixture's largest
+  # statistic (26.1558538058) that made this gate 26x looser than the Rust,
+  # Python and JavaScript harnesses, all of which compare absolutely against
+  # the same 1e-7 that CONTRIBUTING.md advertises.
+  expect_lt(
+    abs(act - exp),
+    tol,
+    label = sprintf(
+      "%s: %s absolute error |%s - %s|", case_id, field, act, exp
+    )
   )
 }
 

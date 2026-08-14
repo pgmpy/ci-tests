@@ -13,7 +13,7 @@ name: R CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [main]
     paths:
       - 'crates/citest-r/**'
       - 'crates/citest/**'
@@ -94,6 +94,12 @@ jobs:
         run: rustup target add x86_64-pc-windows-gnu
 
       - uses: Swatinem/rust-cache@v2
+
+      # The sync tool uses tomllib, so it needs Python 3.11+; the runner's
+      # default python is not guaranteed to satisfy that.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Check packaged source and fixture drift
         run: python crates/citest-r/tools/sync_package_assets.py --check

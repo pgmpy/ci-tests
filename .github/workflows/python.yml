@@ -14,7 +14,7 @@ name: Python CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [main]
     paths:
       - 'crates/citest-python/**'
       - 'crates/citest/**'
