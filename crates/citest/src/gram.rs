@@ -8,17 +8,17 @@
 //! same sufficient-statistic trick as pcalg's `gaussCItest`, but automatic.
 //!
 //! Centered cross-products are algebraically identical to residual regression
-//! on `[1, Z]` (the intercept is the centering), so for **finite** inputs the
-//! results match the residual path to floating-point accuracy. Non-finite
-//! values (`±inf` — NaN is already rejected at [`Dataset`] construction)
-//! yield unspecified non-finite results on *both* paths; neither errors.
+//! on `[1, Z]` (the intercept is the centering), so this is the standard
+//! partial-correlation computation expressed in sufficient statistics rather
+//! than a distinct approximation of it.
 
 use crate::dataset::Dataset;
 use crate::error::CiError;
 
-/// Maximum number of continuous columns for which the full matrix is cached:
-/// `2048² × 8 B = 32 MiB`. Wider datasets silently use the per-query
-/// residual-regression path instead. The cap also bounds the one-shot
+/// Maximum number of continuous columns for which the matrix is built:
+/// `2048² × 8 B = 32 MiB`. This is a hard limit, not a switch to another
+/// algorithm — a wider dataset makes the continuous tests return
+/// [`crate::error::CiError::DegenerateData`]. The cap also bounds the one-shot
 /// `O(n·p²)` build cost paid on the first continuous query, which is then
 /// amortized across every subsequent query.
 pub(crate) const MAX_GRAM_COLS: usize = 2048;
@@ -60,10 +60,8 @@ impl GramCache {
             .map(|col| col.iter().sum::<f64>() / n_f)
             .collect();
 
-        // Note: `s[i][j]` only ever reads columns `i` and `j`, so a
-        // non-finite value in some other column cannot affect a query on
-        // disjoint columns — matching the residual path, which never touches
-        // unqueried columns at all.
+        // `s[i][j]` only ever reads columns `i` and `j`, so a non-finite value
+        // in some other column cannot affect a query on disjoint columns.
         let mut s = vec![0.0; p * p];
         for i in 0..p {
             let xi = continuous[i];
@@ -152,11 +150,9 @@ impl GramCache {
                 diag -= l[j * k + t] * l[j * k + t];
             }
             // Deliberately an *absolute* (not relative) threshold: it errors
-            // only for exact-or-rounding-singular S_zz, matching the QR
-            // fallback, which likewise only errors on an exactly zero pivot.
-            // A relative threshold would reject near-singular Z that the
-            // residual path accepts (returning a large finite r) — a
-            // behavior regression. Downstream, the relative
+            // only for exact-or-rounding-singular S_zz. A relative threshold
+            // would reject merely near-singular Z, for which a large finite r
+            // is the correct answer. Downstream, the relative
             // `VARIANCE_REL_EPS` Schur check is the degeneracy gate.
             if diag <= 0.0 {
                 return Err(rank_deficient());

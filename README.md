@@ -184,8 +184,8 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
 - **Conditioning.** Every test accepts a conditioning set `Z` (a list/vector of variables).
   For conditional discrete tests the statistic is summed over the strata defined by `Z`; for
   continuous tests the partial correlation is derived from a lazily cached covariance matrix
-  (O(|Z|³) per query after the first continuous test; falls back to per-query regression for
-  datasets with more than 2048 continuous columns). Pearson correlation reports
+  (O(|Z|³) per query after the first continuous test; datasets with more than 2048 continuous
+  columns are rejected rather than silently computed a different way). Pearson correlation reports
   `dof = n - |Z| - 2`; Fisher-Z and Pearson equivalence have no degrees of freedom.
 - **Missing data.** NaN (Python/JS) and NA (R) are rejected when the dataset is bound — drop
   or impute first. Discrete columns accept strings everywhere (factorized to integer codes
