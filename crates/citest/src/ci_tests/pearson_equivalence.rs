@@ -1,8 +1,8 @@
 //! Pearson equivalence (TOST) conditional-independence test (continuous).
 
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::ContinuousCDF;
 
-use crate::ci_tests::pearson_correlation::{partial_correlation, RHO_CLIP_EPS};
+use crate::ci_tests::continuous_common::{fisher_z_inputs, standard_normal};
 use crate::dataset::Dataset;
 use crate::error::CiError;
 use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
@@ -13,14 +13,37 @@ use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PearsonEquivalence {
     /// Equivalence margin on the correlation scale (the "negligible" effect).
-    pub delta_threshold: f64,
+    /// Private so that it cannot be set to a value [`PearsonEquivalence::new`]
+    /// would reject; read it back with
+    /// [`PearsonEquivalence::delta_threshold`].
+    delta_threshold: f64,
 }
 
 impl PearsonEquivalence {
     /// Construct the test with the given equivalence margin.
+    ///
+    /// Configuration is validated here rather than on every query, so an
+    /// out-of-range margin fails once, at the point the caller made the
+    /// mistake.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CiError::InvalidConfig`] unless `delta_threshold` lies
+    /// strictly within `(0, 1)`. A margin of 0 admits no equivalence region,
+    /// and 1 or more admits every correlation.
+    pub fn new(delta_threshold: f64) -> Result<Self, CiError> {
+        if !(delta_threshold > 0.0 && delta_threshold < 1.0) {
+            return Err(CiError::InvalidConfig(format!(
+                "delta_threshold must be in (0, 1), got {delta_threshold}"
+            )));
+        }
+        Ok(Self { delta_threshold })
+    }
+
+    /// The configured equivalence margin.
     #[must_use]
-    pub fn new(delta_threshold: f64) -> Self {
-        Self { delta_threshold }
+    pub fn delta_threshold(&self) -> f64 {
+        self.delta_threshold
     }
 }
 
@@ -36,29 +59,11 @@ impl CITest for PearsonEquivalence {
         y: usize,
         z: &[usize],
     ) -> Result<CiResult, CiError> {
-        if !(self.delta_threshold > 0.0 && self.delta_threshold < 1.0) {
-            return Err(CiError::DegenerateData(format!(
-                "delta_threshold must be in (0, 1), got {}",
-                self.delta_threshold
-            )));
-        }
-
-        let n = data.continuous(x)?.len();
-        let n_z = z.len();
-
-        let (rho_raw, _dof) = partial_correlation(data, x, y, z)?;
-        let rho = rho_raw.clamp(-1.0 + RHO_CLIP_EPS, 1.0 - RHO_CLIP_EPS);
-
-        let z_rho = rho.atanh();
+        let inputs = fisher_z_inputs(data, x, y, z)?;
         let z_delta = self.delta_threshold.atanh();
-
-        // partial_correlation guarantees n >= |Z| + 3, so the radicand is >= 0
-        // (matching FisherZ, which relies on the same invariant).
-        #[allow(clippy::cast_precision_loss)]
-        let c = ((n - n_z - 3) as f64).sqrt();
-
-        let normal =
-            Normal::new(0.0, 1.0).map_err(|e| CiError::Numeric(format!("standard normal: {e}")))?;
+        let normal = standard_normal()?;
+        let c = inputs.scale;
+        let z_rho = inputs.z_rho;
 
         let p_lower = 1.0 - normal.cdf(c * (z_rho + z_delta));
         let p_upper = normal.cdf(c * (z_rho - z_delta));
@@ -70,7 +75,7 @@ impl CITest for PearsonEquivalence {
             dof: None,
             // effect_size reports the observed (un-clipped) partial correlation,
             // matching Fisher-Z; the clip only guards the atanh statistic above.
-            effect_size: Some(rho_raw.abs()),
+            effect_size: Some(inputs.rho_raw.abs()),
         })
     }
 
@@ -100,7 +105,7 @@ mod tests {
 
     #[test]
     fn meta_uses_pvalue_lt() {
-        let m = PearsonEquivalence::new(0.1).meta();
+        let m = PearsonEquivalence::new(0.1).unwrap().meta();
         assert_eq!(m.name, "pearson_equivalence");
         assert_eq!(m.rule, IndependenceRule::PValueLt);
         assert_eq!(m.data_types, &[DataType::Continuous]);
@@ -113,7 +118,10 @@ mod tests {
             ("x", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
             ("y", vec![2.0, 1.0, 4.0, 3.0, 6.0, 5.0]),
         ]);
-        let r = PearsonEquivalence::new(0.1).test(&data, 0, 1, &[]).unwrap();
+        let r = PearsonEquivalence::new(0.1)
+            .unwrap()
+            .test(&data, 0, 1, &[])
+            .unwrap();
         assert!(r.dof.is_none());
         // statistic is atanh(rho); effect_size is |rho|.
         let rho = r.statistic.unwrap().tanh();
@@ -121,16 +129,24 @@ mod tests {
     }
 
     #[test]
-    fn out_of_range_delta_errors() {
-        // delta_threshold must lie in (0, 1); 1.5 is rejected before any compute.
-        let data = ds(vec![
-            ("x", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
-            ("y", vec![2.0, 1.0, 4.0, 3.0, 6.0, 5.0]),
-        ]);
-        assert!(matches!(
-            PearsonEquivalence::new(1.5).test(&data, 0, 1, &[]),
-            Err(CiError::DegenerateData(_))
-        ));
+    fn out_of_range_delta_is_rejected_at_construction() {
+        // The margin is configuration, not data, so it fails once when the
+        // caller supplies it rather than on every query -- and reports
+        // InvalidConfig, not DegenerateData, which would blame the data.
+        for delta in [1.5, 1.0, 0.0, -0.1, f64::NAN, f64::INFINITY] {
+            let err = PearsonEquivalence::new(delta).unwrap_err();
+            assert!(
+                matches!(err, CiError::InvalidConfig(_)),
+                "delta {delta}: {err}"
+            );
+            assert!(err.to_string().contains("delta_threshold"));
+        }
+    }
+
+    #[test]
+    fn valid_delta_round_trips() {
+        let test = PearsonEquivalence::new(0.25).unwrap();
+        assert!((test.delta_threshold() - 0.25).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -148,6 +164,7 @@ mod tests {
         }
         let data = ds(vec![("x", x), ("y", y)]);
         assert!(PearsonEquivalence::new(0.2)
+            .unwrap()
             .is_independent(&data, 0, 1, &[], 0.05)
             .unwrap());
     }
@@ -161,6 +178,7 @@ mod tests {
             ("y", vec![2., 4.1, 5.9, 8.2, 9.8]),
         ]);
         assert!(!PearsonEquivalence::new(0.05)
+            .unwrap()
             .is_independent(&data, 0, 1, &[], 0.05)
             .unwrap());
     }
@@ -174,7 +192,9 @@ mod tests {
             ("z", vec![1.0, 2.0, 3.0]),
         ]);
         assert!(matches!(
-            PearsonEquivalence::new(0.1).test(&data, 0, 1, &[2]),
+            PearsonEquivalence::new(0.1)
+                .unwrap()
+                .test(&data, 0, 1, &[2]),
             Err(CiError::DegenerateData(_))
         ));
     }

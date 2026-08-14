@@ -237,7 +237,12 @@ mod tests {
             "expected +inf, got {:?}",
             r.statistic
         );
-        assert_eq!(r.p_value, 0.0);
+        // Exact comparison is deliberate: the survival function at +inf is
+        // exactly 0.0, and anything else would mean the infinity was lost.
+        #[allow(clippy::float_cmp, reason = "an exact zero is the property under test")]
+        {
+            assert_eq!(r.p_value, 0.0);
+        }
     }
 
     #[test]

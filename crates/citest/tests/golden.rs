@@ -141,7 +141,7 @@ fn run_case(case: &Case) -> CiResult {
                     case.id, case.test
                 )
             });
-            Box::new(PearsonEquivalence::new(delta))
+            Box::new(PearsonEquivalence::new(delta).expect("fixture delta must be valid"))
         }
         "fisher_z" => Box::new(FisherZ::new()),
         other => panic!(

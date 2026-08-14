@@ -37,4 +37,10 @@ pub enum CiError {
     /// duplicate entries in z).
     #[error("invalid query: {0}")]
     InvalidQuery(String),
+
+    /// A test was configured with a value outside its permitted range. This is
+    /// a fault in the caller's configuration, not in the data, and is reported
+    /// when the test is constructed rather than on every query.
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
 }

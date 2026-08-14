@@ -558,9 +558,7 @@ ci_test_class!(
     cfg,
     "EquivalenceOptions | undefined",
     &["deltaThreshold"],
-    citest::ci_tests::PearsonEquivalence {
-        delta_threshold: cfg.delta_threshold
-    }
+    citest::ci_tests::PearsonEquivalence::new(cfg.delta_threshold).map_err(|e| to_js_error(&e))?
 );
 
 ci_test_class!(

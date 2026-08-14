@@ -1,8 +1,8 @@
 //! Fisher-z conditional-independence test (continuous).
 
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::ContinuousCDF;
 
-use crate::ci_tests::pearson_correlation::{partial_correlation, RHO_CLIP_EPS};
+use crate::ci_tests::continuous_common::{fisher_z_inputs, standard_normal};
 use crate::dataset::Dataset;
 use crate::error::CiError;
 use crate::strategy::{CITest, CiResult, DataType, IndependenceRule, TestMeta};
@@ -34,27 +34,15 @@ impl CITest for FisherZ {
         y: usize,
         z: &[usize],
     ) -> Result<CiResult, CiError> {
-        let n = data.n_rows();
-        let n_z = z.len();
-
-        let (r, _dof) = partial_correlation(data, x, y, z)?;
-        let rho = r.clamp(-1.0 + RHO_CLIP_EPS, 1.0 - RHO_CLIP_EPS);
-
-        // partial_correlation guarantees n >= |Z| + 3, so the radicand is >= 0
-        // (n == |Z| + 3 gives statistic 0 and p = 1, matching pgmpy).
-        #[allow(clippy::cast_precision_loss)]
-        let scale = ((n - n_z - 3) as f64).sqrt();
-        let statistic = scale * rho.atanh();
-
-        let normal =
-            Normal::new(0.0, 1.0).map_err(|e| CiError::Numeric(format!("standard normal: {e}")))?;
-        let p_value = 2.0 * normal.sf(statistic.abs());
+        let inputs = fisher_z_inputs(data, x, y, z)?;
+        let statistic = inputs.scale * inputs.z_rho;
+        let p_value = 2.0 * standard_normal()?.sf(statistic.abs());
 
         Ok(CiResult {
             statistic: Some(statistic),
             p_value,
             dof: None,
-            effect_size: Some(r.abs()),
+            effect_size: Some(inputs.rho_raw.abs()),
         })
     }
 

@@ -147,8 +147,8 @@ fn partial_correlation_gram(
             return Err(constant_input_error(if s_xx == 0.0 { "x" } else { "y" }));
         }
     } else {
-        // Mirror the residual-constant check (the relative eps also catches
-        // fp-negative Schur complements and the constant-input case).
+        // The relative eps also catches fp-negative Schur complements and the
+        // constant-input case.
         check_residual_variance("x", a, s_xx)?;
         check_residual_variance("y", b, s_yy)?;
     }
@@ -156,25 +156,6 @@ fn partial_correlation_gram(
     let r = c / (a * b).sqrt();
     Ok((r, n - n_z - 2))
 }
-
-/// O(n·|Z|²) fallback: compute partial correlation via Householder QR residual
-/// regression on `[1, Z]`.
-///
-/// With empty `z` this is the plain Pearson r with `dof = n - 2`. With `z` it is
-/// the correlation of the residuals after regressing X and Y on `[1, Z]`, with
-/// `dof = n - |Z| - 2`. Shared with the equivalence test.
-///
-/// This is the O(n·|Z|²) fallback used when the dataset's Gram cache is
-/// unavailable; the normal entry point is [`partial_correlation`].
-///
-/// # Errors
-///
-/// Returns [`CiError::DegenerateData`] on constant input or when there are too
-/// few rows, and [`CiError::Numeric`] if the least-squares solve fails.
-#[allow(
-    clippy::many_single_char_names,
-    reason = "x, y, z are the standard conditional-independence variable names from the contract"
-)]
 
 /// Two-tailed p-value for H₀: ρ = 0 from `r` and `dof` via the t-distribution.
 ///
@@ -322,9 +303,6 @@ mod tests {
         clippy::cast_precision_loss,
         reason = "LCG constants must be exact; precision loss is intentional for the RNG output"
     )]
-
-    
-
     #[test]
     fn gram_path_degenerate_errors_match() {
         // Constant x, unconditional -> "input is constant".
@@ -359,17 +337,22 @@ mod tests {
         ));
     }
 
-    
-
-
     #[test]
     fn too_many_or_no_continuous_columns_error_explicitly() {
         // A dataset with no continuous columns has no Gaussian sufficient
         // statistics, so there is nothing to compute from. It must say so
         // rather than dispatch to a second algorithm.
         let data = Dataset::from_columns(vec![
-            ("a".into(), crate::dataset::ColumnKind::Discrete, vec![1., 2., 1., 2.]),
-            ("b".into(), crate::dataset::ColumnKind::Discrete, vec![1., 1., 2., 2.]),
+            (
+                "a".into(),
+                crate::dataset::ColumnKind::Discrete,
+                vec![1., 2., 1., 2.],
+            ),
+            (
+                "b".into(),
+                crate::dataset::ColumnKind::Discrete,
+                vec![1., 1., 2., 2.],
+            ),
         ])
         .unwrap();
         let err = partial_correlation(&data, 0, 1, &[]).unwrap_err();

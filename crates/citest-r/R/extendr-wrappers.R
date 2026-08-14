@@ -55,6 +55,10 @@ Dataset$index_of <- function(name) .Call(wrap__Dataset__index_of, self, name)
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -84,6 +88,10 @@ ChiSquared$is_independent <- function(x, y, z, significance_level) .Call(wrap__C
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -113,6 +121,10 @@ LogLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -142,6 +154,10 @@ CressieRead$is_independent <- function(x, y, z, significance_level) .Call(wrap__
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -171,6 +187,10 @@ FreemanTukey$is_independent <- function(x, y, z, significance_level) .Call(wrap_
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -200,6 +220,10 @@ ModifiedLikelihood$is_independent <- function(x, y, z, significance_level) .Call
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -229,6 +253,10 @@ PearsonCorrelation$is_independent <- function(x, y, z, significance_level) .Call
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{
@@ -258,6 +286,10 @@ FisherZ$is_independent <- function(x, y, z, significance_level) .Call(wrap__Fish
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Construct the handle bound to `data` with the given config.
+#'
+#'Fallible so that a test whose configuration the core validates
+#'(see `PearsonEquivalence`) reports the fault here, when the
+#'caller supplied it, rather than on every query.
 #'}
 #'
 #'\subsection{Method `run_test`}{

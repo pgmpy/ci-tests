@@ -6,6 +6,7 @@
 //! continuous tests ([`PearsonCorrelation`], [`FisherZ`],
 //! [`PearsonEquivalence`]) share the partial-correlation path.
 
+mod continuous_common;
 mod discrete_common;
 mod fisher_z;
 mod pearson_correlation;

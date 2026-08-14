@@ -481,7 +481,10 @@ ci_test_class!(
     PyPearsonEquivalence,
     citest::ci_tests::PearsonEquivalence,
     new(delta_threshold: f64 = 0.1) {
-        citest::ci_tests::PearsonEquivalence { delta_threshold }
+        // Configuration is validated by the core constructor, so an invalid
+        // margin raises here rather than on every run_test call.
+        citest::ci_tests::PearsonEquivalence::new(delta_threshold)
+            .map_err(|e| map_err(&e))?
     }
 );
 

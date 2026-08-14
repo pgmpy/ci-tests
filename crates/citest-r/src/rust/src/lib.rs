@@ -193,10 +193,14 @@ macro_rules! ci_test_handle {
         #[extendr]
         impl $wrapper {
             /// Construct the handle bound to `data` with the given config.
-            fn new(data: &Dataset $(, $arg: $arg_ty)*) -> Self {
+            ///
+            /// Fallible so that a test whose configuration the core validates
+            /// (see `PearsonEquivalence`) reports the fault here, when the
+            /// caller supplied it, rather than on every query.
+            fn new(data: &Dataset $(, $arg: $arg_ty)*) -> Result<Self> {
                 let data = data.clone();
                 let inner = $build;
-                Self { data, inner }
+                Ok(Self { data, inner })
             }
 
             /// Run the test for `x ⟂ y | z` (column names; `z` a character
@@ -265,7 +269,7 @@ ci_test_handle!(
     PearsonEquivalence,
     citest::ci_tests::PearsonEquivalence,
     new(delta_threshold: f64) {
-        citest::ci_tests::PearsonEquivalence { delta_threshold }
+        citest::ci_tests::PearsonEquivalence::new(delta_threshold).map_err(to_r_error)?
     }
 );
 

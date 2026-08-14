@@ -30,7 +30,12 @@ fn default_tests() -> Vec<Box<dyn CITest>> {
         Box::new(ModifiedLikelihood::new()),
         Box::new(PearsonCorrelation::new()),
         Box::new(FisherZ::new()),
-        Box::new(PearsonEquivalence::new(DEFAULT_DELTA_THRESHOLD)),
+        // The default margin is a compile-time constant inside (0, 1), so this
+        // cannot fail; a panic here would mean the constant was edited wrongly.
+        Box::new(
+            PearsonEquivalence::new(DEFAULT_DELTA_THRESHOLD)
+                .expect("DEFAULT_DELTA_THRESHOLD must lie in (0, 1)"),
+        ),
     ]
 }
 
