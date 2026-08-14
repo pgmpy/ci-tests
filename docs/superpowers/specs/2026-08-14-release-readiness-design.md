@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-14
 
-**Status:** Stages A and B implemented (git history from `1db5d30`); Stages C–D specified, not scheduled
+**Status:** Stages A, B and C implemented (git history from `1db5d30`); Stage D specified, not scheduled
 
 ## Context
 
@@ -400,7 +400,10 @@ bindings, so this stage was not confined to the core after all.
 
 ## Stage C — Binding Convergence
 
-Fix only genuine disagreements; keep idiomatic shapes.
+**Implemented.** `index_of` was left divergent by design (see below); the
+error-kind discriminant was not added — the unified Python exception and
+`list_tests()` covered the practical need, and adding a discriminant to
+`CiError` is deferred to a future stage rather than done speculatively.
 
 - **Python error model.** Column-reference failures raise `ValueError` while
   query and kind failures raise `CiError`, so `except CiError` silently misses
