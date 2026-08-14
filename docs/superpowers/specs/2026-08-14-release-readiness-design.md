@@ -133,17 +133,42 @@ its `license`, and its `description`.
 Add a `LICENSE` file to the core crate and the Python distribution, and declare
 it so that it ships. The npm tarball and the R package already carry one.
 
-### A5. Packaged tests can run
+### A5. Published artifacts ship no tests
 
-`crates/ci-core/tests/golden.rs:67` reads
-`CARGO_MANIFEST_DIR/../../tests/fixtures/golden.json`, a path outside the
-package. `cargo package` therefore produces a crate whose test suite cannot run.
+The published artifacts currently ship test files without the fixture those
+tests need. The fix is not to relocate the fixture so the shipped tests can run
+— it is to stop shipping tests. Consumers install a library to use it, not to
+run its development suite, and the golden fixture is a development-time
+cross-language parity gate rather than something a downstream caller needs.
 
-The canonical fixture moves to `crates/citest/tests/fixtures/golden.json`. The
-generator at `tests/fixtures/generate_golden.py` writes to the new canonical
-location; `sync_package_assets.py` continues to copy it into the R package.
-Python and JS locate it relative to the repository and skip with an explicit
-reason when absent, since their published artifacts do not ship tests.
+Measured contents of the artifacts as they build today:
+
+| Artifact | Ships now | Ship tests? |
+|---|---|---|
+| crates.io | `tests/golden.rs`, without its fixture | No |
+| PyPI sdist | Rust *and* Python tests, no fixture, plus `crates/ci-python/.vscode/settings.json` | No |
+| PyPI wheel | no tests, but `ci_python/__pycache__/__init__.cpython-314.pyc` | No |
+| npm | `ci_js_bg.wasm`, `ci_js.js`, `ci_js.d.ts` | No — already correct |
+| CRAN | `tests/testthat/**` plus its own fixture copy | **Yes — by design** |
+
+Actions:
+
+- Rust: add an explicit `include` to the crate manifest covering `src/**`,
+  `README.md`, `LICENSE` and `Cargo.toml`, so `tests/` is not published.
+- Python: exclude `test/`, `.vscode/` and `__pycache__/` from both sdist and
+  wheel. Shipping a Python 3.14 bytecode cache inside an abi3 wheel that
+  advertises 3.10+ is actively wrong, not merely untidy.
+- npm: no change.
+- **R: keep shipping tests.** CRAN runs a package's own test suite on its check
+  farm across platforms, and that is a substantial part of the QA value of being
+  on CRAN. This is why `crates/citest-r/tests/testthat/fixtures/golden.json`
+  exists as a vendored copy, and why it must remain in the built archive.
+
+**Consequence for the fixture layout.** The canonical fixture stays where it is,
+at `tests/fixtures/golden.json`. No relocation is needed, and the centre of
+gravity of the parity system does not move. The R copy is load-bearing rather
+than redundant duplication, and `sync_package_assets.py --check` remains the
+mechanism that keeps the two byte-identical.
 
 ### A6. CI that runs
 
@@ -218,11 +243,25 @@ comparison matching the other three.
 
 ### Stage A acceptance
 
-All four suites pass, with the R suite run through the `expert` conda
-environment. `cargo package -p citest` produces a crate whose tests run.
-`python -c "import citest"` works from a built wheel. `wasm-pack build` output
-is importable under the new name. `sync_package_assets.py --check` passes and
-covers the migrated vendor and notice contracts.
+All four suites pass in the repository, with the R suite run through the
+`expert` conda environment.
+
+Artifact contents are asserted, not assumed — each is built and its file list
+inspected:
+
+- `cargo package --list -p citest` contains `src/**`, `README.md`, `LICENSE`
+  and the manifests, and **no `tests/`**.
+- The Python wheel contains `citest/__init__.py`, the `.so`, the `.pyi`,
+  `py.typed` and `LICENSE`, and **no `test/`, `.vscode/` or `__pycache__/`**.
+  Its `METADATA` carries `Summary`, `Description`, `License`, `Author` and
+  `Project-URL`, none of which it has today.
+- The Python sdist contains no test files and no editor configuration.
+- The wasm-pack output is importable under the new name.
+- The built R source archive **does** contain `tests/testthat/**` and its
+  fixture copy, and `R CMD check` runs them.
+
+`sync_package_assets.py --check` passes and covers the vendor-archive and
+third-party-notice contracts migrated out of the deleted release test.
 
 ## Stage B — Core Simplification
 
@@ -320,8 +359,12 @@ Fix only genuine disagreements; keep idiomatic shapes.
 ## Stage D — Test and CI Architecture
 
 - **The fixture is tracked twice**, at roughly 287 KB per copy for 80 cases,
-  and the generator writes only one of the two. Make the R copy a build artifact
-  of the sync tool rather than an independently tracked file.
+  and `generate_golden.py` writes only one of the two. The second copy is
+  required — the R package must carry it so CRAN can run the suite (see A5) —
+  so the fix is not to remove it but to stop regeneration being a multi-command
+  ritual: have the generator write both destinations in one pass. Today,
+  skipping the sync step leaves Python CI green and R CI red, in a different
+  workflow.
 - **The pgmpy parity check never runs in CI**, although detecting drift from
   pgmpy is the reason it exists.
 - **The Python job rebuilds the extension nine times** for what is a single
