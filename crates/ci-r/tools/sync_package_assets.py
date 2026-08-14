@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+import tarfile
 import tomllib
 from collections.abc import Sequence
 from pathlib import Path
@@ -17,6 +18,36 @@ CANONICAL_FIXTURE = Path("tests/fixtures/golden.json")
 PACKAGED_FIXTURE = Path("crates/ci-r/tests/testthat/fixtures/golden.json")
 R_RUST_MANIFEST = Path("crates/ci-r/src/rust/Cargo.toml")
 ROOT_MANIFEST = Path("Cargo.toml")
+
+# Distribution contracts for the redistributed Rust dependency bundle. The R
+# source package vendors its whole dependency tree so the built archive
+# compiles outside this monorepo without network access; that makes the
+# repository a redistributor, with the licensing obligations that implies.
+R_RUST_LOCKFILE = Path("crates/ci-r/src/rust/Cargo.lock")
+VENDOR_ARCHIVE = Path("crates/ci-r/src/rust/vendor.tar.xz")
+THIRD_PARTY_NOTICES = Path("crates/ci-r/THIRD-PARTY-NOTICES")
+
+# Crates whose source is redistributed under extendr's own MIT terms.
+EXTENDR_CRATES = frozenset({"extendr-api", "extendr-ffi", "extendr-macros"})
+
+# Upstream's copyright line points at a CONTRIBUTORS.md that is not part of the
+# vendored tarball, so the notice reproduces the list. Losing an entry would
+# make the redistributed copyright reference incomplete.
+EXTENDR_COPYRIGHT = "Copyright (c) 2021 The Extendr contributors (See CONTRIBUTORS.md)"
+EXTENDR_CONTRIBUTORS = (
+    "Andy Thomason",
+    "Thomas Down",
+    "Mossa Merhi Reimert",
+    "Claus O. Wilke",
+    "Hiroaki Yutani",
+    "Ilia Kosenkov",
+    "Daniel Falbel",
+    "Genomics PLC",
+)
+MIT_CLAUSES = (
+    "Permission is hereby granted, free of charge, to any person obtaining a copy",
+    "The above copyright notice and this permission notice shall be included",
+)
 
 
 def _core_inputs(root: Path) -> list[Path]:
@@ -71,6 +102,102 @@ def find_drift(root: Path) -> list[str]:
     return errors
 
 
+def _registry_crates(root: Path) -> set[tuple[str, str]]:
+    """Every `(name, version)` the R Rust lockfile resolves from a registry."""
+    lockfile = tomllib.loads((root / R_RUST_LOCKFILE).read_text(encoding="utf-8"))
+    return {
+        (package["name"], package["version"])
+        for package in lockfile["package"]
+        if package.get("source", "").startswith("registry+")
+    }
+
+
+def _vendored_manifests(
+    root: Path,
+) -> tuple[dict[tuple[str, str], dict[str, object]], set[str]]:
+    """Parse `vendor/<crate>/Cargo.toml` out of the archive, with its members."""
+    manifests: dict[tuple[str, str], dict[str, object]] = {}
+    with tarfile.open(root / VENDOR_ARCHIVE, "r:xz") as archive:
+        members = {member.name for member in archive.getmembers()}
+        for name in sorted(members):
+            parts = Path(name).parts
+            if len(parts) == 3 and parts[0] == "vendor" and parts[-1] == "Cargo.toml":
+                handle = archive.extractfile(name)
+                if handle is None:
+                    continue
+                package = tomllib.loads(handle.read().decode("utf-8"))["package"]
+                manifests[(package["name"], package["version"])] = package
+    return manifests, members
+
+
+def _vendor_drift(root: Path) -> list[str]:
+    """The vendored bundle matches the lockfile and declares its licences."""
+    if not (root / VENDOR_ARCHIVE).is_file():
+        return [f"missing vendor archive: {VENDOR_ARCHIVE.as_posix()}"]
+
+    errors: list[str] = []
+    manifests, members = _vendored_manifests(root)
+    locked = _registry_crates(root)
+
+    for name, version in sorted(locked - set(manifests)):
+        errors.append(f"locked crate not vendored: {name} {version}")
+    for name, version in sorted(set(manifests) - locked):
+        errors.append(f"vendored crate not in lockfile: {name} {version}")
+    for name in sorted(EXTENDR_CRATES - {name for name, _ in manifests}):
+        errors.append(f"extendr crate missing from vendor archive: {name}")
+
+    for (name, version), package in sorted(manifests.items()):
+        expression = str(package.get("license", "")).strip()
+        license_file = str(package.get("license-file", "")).strip()
+        if not expression and not license_file:
+            errors.append(f"vendored crate declares no licence: {name} {version}")
+        if license_file and f"vendor/{name}/{license_file}" not in members:
+            errors.append(
+                f"vendored crate declares a licence file that is absent: "
+                f"{name} {version} -> {license_file}"
+            )
+    return errors
+
+
+def _notice_drift(root: Path) -> list[str]:
+    """The third-party notice reproduces extendr's upstream MIT attribution.
+
+    NOTE: this covers only the extendr crates. The archive vendors the full
+    dependency tree, and the notice does not yet name every redistributed
+    crate; widening it is tracked separately as CRAN preparation work.
+    """
+    notice_path = root / THIRD_PARTY_NOTICES
+    if not notice_path.is_file():
+        return [f"missing third-party notice: {THIRD_PARTY_NOTICES.as_posix()}"]
+
+    notice = notice_path.read_text(encoding="utf-8")
+    errors: list[str] = []
+    if "https://github.com/extendr/extendr" not in notice:
+        errors.append("third-party notice omits the extendr upstream source URL")
+    for crate in sorted(EXTENDR_CRATES):
+        if crate not in notice:
+            errors.append(f"third-party notice omits redistributed crate: {crate}")
+    if EXTENDR_COPYRIGHT not in notice:
+        errors.append("third-party notice omits the extendr copyright line")
+    for contributor in EXTENDR_CONTRIBUTORS:
+        if contributor not in notice:
+            errors.append(f"third-party notice omits contributor: {contributor}")
+    for clause in MIT_CLAUSES:
+        if clause not in notice:
+            errors.append(f"third-party notice omits an MIT clause: {clause[:40]}...")
+    return errors
+
+
+def find_distribution_drift(root: Path) -> list[str]:
+    """Licensing contracts for the redistributed Rust dependency bundle.
+
+    Kept separate from [`find_drift`], which reports asset-copy drift and must
+    stay runnable against a minimal tree holding only the canonical inputs.
+    These checks need the full R package (vendor archive, notice file).
+    """
+    return _vendor_drift(root) + _notice_drift(root)
+
+
 def sync_assets(root: Path) -> None:
     """Replace packaged project copies with their canonical repository bytes."""
     packaged_core = root / PACKAGED_CORE
@@ -113,11 +240,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     root = Path(__file__).resolve().parents[3]
     if args.sync:
         sync_assets(root)
-    errors = find_drift(root)
+    errors = find_drift(root) + find_distribution_drift(root)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print("R package assets match canonical sources")
+    print("R package assets and distribution licensing match canonical sources")
     return 0
 
 

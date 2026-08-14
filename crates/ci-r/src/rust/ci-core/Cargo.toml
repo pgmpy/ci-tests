@@ -9,6 +9,11 @@ repository = "https://github.com/pgmpy/ci-tests"
 keywords = ["statistics", "causal-inference", "conditional-independence"]
 categories = ["science"]
 
+# `tests/golden.rs` reads the repository-root fixture, which is not part of the
+# packaged crate; publishing the test without its fixture would ship a test that
+# cannot run. Consumers do not need the development parity suite.
+exclude = ["tests/**"]
+
 [dependencies]
 statrs = { workspace = true }
 thiserror = "2"
