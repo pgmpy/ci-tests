@@ -83,22 +83,74 @@ jobs:
       - name: Install fixture dependencies
         run: pip install pytest -r tests/fixtures/requirements.txt
 
-      - name: Test fixture tooling
+      # `pytest tests` asserts both committed fixture copies match the
+      # generator and that --check never writes, so a separate CLI invocation
+      # would only repeat it.
+      - name: Test fixture tooling and fixture currency
         run: pytest tests
 
-      - name: Check generated fixture
-        run: python tests/fixtures/generate_golden.py --check
+  pgmpy-parity:
+    name: pgmpy Parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
 
-  python-test:
-    name: Python Tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # pgmpy is pinned to a commit, so this is deterministic: it fails only
+      # when a change here diverges from the reference implementation, not
+      # when pgmpy moves.
+      - name: Install pinned pgmpy
+        run: pip install -r tests/fixtures/requirements-pgmpy.txt
+
+      # Exits non-zero only on real divergence in shared semantics. Cases
+      # pgmpy cannot express, and known intentional differences, are reported
+      # and do not fail.
+      - name: Compare against pgmpy
+        run: python tests/fixtures/check_pgmpy_parity.py
+
+  # The extension is abi3, so ONE wheel per OS runs on every supported
+  # interpreter. Building inside the 3x3 test matrix compiled the same Rust
+  # nine times to produce three distinct artifacts.
+  build-wheel:
+    name: Build Wheel
     needs: [golden-fixture, python-lint]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # Use a Python supported by the installed PyO3; no forward-compat env
-        # var needed here. The abi3-py310 wheel also works on 3.10+ at runtime.
-        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build abi3 wheel
+        run: pipx run maturin build --release --manifest-path crates/citest-python/Cargo.toml --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+
+  python-test:
+    name: Python Tests
+    needs: [build-wheel]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        # One abi3 wheel must work on every interpreter it advertises, so the
+        # matrix here tests that claim rather than rebuilding for each.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
 
@@ -106,26 +158,23 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Install the built wheel
+        shell: bash
+        run: pip install --no-index --find-links dist citest
 
-      - name: Install Python dependencies
-        run: pip install maturin numpy pandas pandas-stubs pytest mypy
-
-      # Verified locally: maturin builds the extension; the golden parity test
-      # (crates/citest-python/test/test_golden.py) reproduces all 80 fixture cases.
-      # On a too-new interpreter, prefix with
-      # PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 (not required for 3.11-3.13).
-      - name: Build and install extension
-        working-directory: crates/citest-python
-        run: pip install -e . --no-build-isolation
+      - name: Install test dependencies
+        run: pip install numpy pandas pandas-stubs pytest mypy
 
       - name: Type check
         working-directory: crates/citest-python
         run: mypy test/
 
-      # Verified locally: `pytest crates/citest-python/test/` -> golden = 80/80.
+      # Runs against the installed wheel, not a source build, so this exercises
+      # what users actually receive.
       - name: Run tests
         run: pytest crates/citest-python/test/

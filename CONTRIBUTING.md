@@ -259,15 +259,22 @@ regenerate the fixture, and verify that its committed bytes are current:
 ```bash
 python -m pip install -r tests/fixtures/requirements.txt
 python tests/fixtures/generate_golden.py
-python tests/fixtures/generate_golden.py --check
-python crates/citest-r/tools/sync_package_assets.py --sync
-python crates/citest-r/tools/sync_package_assets.py --check
-python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /path/to/pgmpy
 ```
 
-The final command is an optional comparison against a local pgmpy checkout; it does not
-participate in fixture generation. Pearson correlation reports `dof = n - |Z| - 2`, while
-Fisher-Z and Pearson equivalence report no degrees of freedom.
+The generator writes **both** committed copies — the canonical
+`tests/fixtures/golden.json` and the R package's own, which its source archive needs so
+CRAN can run the parity suite. `--check` verifies both and is what CI runs, so a stale
+copy fails in the same place you regenerated it rather than in a different workflow.
+
+A separate check compares the same cases against pgmpy itself, whose formulas this
+library follows. CI runs it on every change; run it locally with
+`python tests/fixtures/check_pgmpy_parity.py` (needs
+`pip install -r tests/fixtures/requirements-pgmpy.txt`), or point it at a checkout with
+`--pgmpy-source /path/to/pgmpy`. It fails only on real divergence; cases pgmpy cannot
+express, and known intentional differences, are reported without failing.
+
+Pearson correlation reports `dof = n - |Z| - 2`, while Fisher-Z and Pearson equivalence
+report no degrees of freedom.
 
 ### Rust Tests
 ```bash

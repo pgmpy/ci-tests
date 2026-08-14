@@ -43,6 +43,34 @@ EXPECTED_COUNTS = {
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 EXPECTED_KEYS = {"statistic", "p_value", "dof", "effect_size"}
 DEFAULT_OUTPUT = Path(__file__).with_name("golden.json")
+
+# The R source package carries its own copy so the built archive can run the
+# parity suite outside this repository -- CRAN runs a package's tests on its
+# check farm, so the copy is load-bearing rather than redundant. Writing both
+# destinations in one pass removes the ritual where regenerating the canonical
+# fixture and forgetting the sync step left Python CI green and R CI red, in a
+# different workflow.
+PACKAGED_OUTPUT = (
+    Path(__file__).resolve().parents[2]
+    / "crates"
+    / "citest-r"
+    / "tests"
+    / "testthat"
+    / "fixtures"
+    / "golden.json"
+)
+
+
+def fixture_destinations(primary: Path) -> list[Path]:
+    """Every path the fixture must be written to, `primary` first.
+
+    The packaged copy is only included when the caller is writing the canonical
+    location; an explicit `--output` elsewhere (used by the tests) writes just
+    that one file.
+    """
+    if primary.resolve() != DEFAULT_OUTPUT.resolve():
+        return [primary]
+    return [primary, PACKAGED_OUTPUT]
 FIXTURE_NUMERIC_TOLERANCE = 1e-7
 TOLERATED_EXPECTED_FIELDS = {"statistic", "p_value", "effect_size"}
 
@@ -698,17 +726,23 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     rendered = render_cases(build_cases())
+    destinations = fixture_destinations(args.output)
     if args.check:
-        if check_fixture(args.output, rendered):
-            print(f"golden fixture is current: {args.output}")
+        stale = [path for path in destinations if not check_fixture(path, rendered)]
+        if not stale:
+            for path in destinations:
+                print(f"golden fixture is current: {path}")
             return 0
+        for path in stale:
+            print(f"golden fixture is missing or stale: {path}", file=sys.stderr)
         print(
-            f"golden fixture is missing or stale: {args.output}\nregenerate it with: python tests/fixtures/generate_golden.py",
+            "regenerate it with: python tests/fixtures/generate_golden.py",
             file=sys.stderr,
         )
         return 1
-    write_fixture(args.output, rendered)
-    print(f"wrote {EXPECTED_CASE_COUNT} golden cases: {args.output}")
+    for path in destinations:
+        write_fixture(path, rendered)
+        print(f"wrote {EXPECTED_CASE_COUNT} golden cases: {path}")
     return 0
 
 

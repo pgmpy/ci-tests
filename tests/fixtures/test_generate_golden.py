@@ -225,10 +225,20 @@ def test_cli_check_mode_never_creates_or_rewrites_output(tmp_path: Path) -> None
     assert output.read_text(encoding="utf-8") == changed
 
 
-def test_committed_fixture_matches_generator() -> None:
+def test_every_committed_fixture_copy_matches_generator() -> None:
+    """Both destinations, not just the canonical one.
+
+    The R source package carries its own copy so CRAN can run the parity suite
+    on its check farm. It used to be written by a separate sync step, so
+    regenerating and forgetting that step left this check green while R CI
+    failed in a different workflow.
+    """
     generator = load_generator()
     rendered = generator.render_cases(generator.build_cases())
-    assert GOLDEN_PATH.exists(), "golden.json must be committed"
-    assert generator.check_fixture(GOLDEN_PATH, rendered), (
-        "golden.json is stale; run python tests/fixtures/generate_golden.py"
-    )
+    destinations = generator.fixture_destinations(generator.DEFAULT_OUTPUT)
+    assert len(destinations) == 2, "expected the canonical and packaged copies"
+    for path in destinations:
+        assert path.exists(), f"{path} must be committed"
+        assert generator.check_fixture(path, rendered), (
+            f"{path} is stale; run python tests/fixtures/generate_golden.py"
+        )
