@@ -290,9 +290,9 @@ def test_from_pandas_missing_categorical_errors() -> None:
         Dataset.from_pandas(df2)
 
 
-def test_from_pandas_extension_dtype_gives_friendly_error() -> None:
-    pd = pytest.importorskip("pandas")
-    df = pd.DataFrame({"A": pd.array([1, 2, 3], dtype="Int64"), "B": [0.1, 0.2, 0.3]})
+def test_from_pandas_uninferrable_dtype_gives_friendly_error() -> None:
+    """Nullable numeric dtypes now infer; genuinely uninferrable ones still say so."""
+    df = pd.DataFrame({"A": np.array([1 + 2j, 3 + 4j]), "B": [0.1, 0.2]})
     with pytest.raises(TypeError, match="cannot infer column kind"):
         Dataset.from_pandas(df)
 
@@ -423,4 +423,37 @@ def test_from_pandas_rejects_duplicate_column_labels() -> None:
     """
     df = pd.DataFrame([[0.0, 1.0], [1.0, 0.0]], columns=["A", "A"])
     with pytest.raises(CiError, match="duplicate column labels"):
+        Dataset.from_pandas(df)
+
+
+def test_from_pandas_supports_nullable_extension_dtypes() -> None:
+    """Int64 / boolean / Float64 columns infer like their numpy counterparts."""
+    df = pd.DataFrame(
+        {
+            "A": pd.array([0, 1, 0, 1], dtype="Int64"),
+            "B": pd.array([True, True, False, False], dtype="boolean"),
+            "X": pd.array([0.1, 0.4, 0.2, 0.8], dtype="Float64"),
+        }
+    )
+    data = Dataset.from_pandas(df)
+    assert data.n_cols == 3
+    assert data.n_rows == 4
+    result = ChiSquared(data).run_test("A", "B")
+    assert result.dof == 1
+    FisherZ(
+        Dataset.from_pandas(
+            pd.DataFrame(
+                {
+                    "X": pd.array([0.1, 0.4, 0.2, 0.8, 0.5], dtype="Float64"),
+                    "Y": pd.array([0.7, 0.1, 0.6, 0.2, 0.4], dtype="Float64"),
+                }
+            )
+        )
+    ).run_test("X", "Y")
+
+
+def test_from_pandas_nullable_na_hits_the_strict_missing_policy() -> None:
+    """pd.NA maps to NaN, and the core rejects it like any other missing value."""
+    df = pd.DataFrame({"A": pd.array([1, pd.NA, 2], dtype="Int64")})
+    with pytest.raises(CiError, match="missing"):
         Dataset.from_pandas(df)

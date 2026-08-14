@@ -2,7 +2,7 @@
 // (raw columns object vs shared Dataset), string categoricals, the strict
 // NaN policy, query validation, and fisher_z.
 
-import { describe, test, expect, beforeAll } from "vitest";
+import { describe, test, expect } from "vitest";
 import pkg from "../pkg/citest_js.js";
 const {
   Dataset,
@@ -10,11 +10,8 @@ const {
   FisherZ,
   PearsonCorrelation,
   PearsonEquivalence,
-  init,
   listTests,
 } = pkg;
-
-beforeAll(() => init());
 
 const DISCRETE_COLS = {
   A: { kind: "discrete", values: [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0] },

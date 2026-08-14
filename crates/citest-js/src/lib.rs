@@ -80,14 +80,6 @@ export interface TestMeta {
 }
 "#;
 
-/// Install the panic hook so Rust panics surface as readable JS errors. Called
-/// automatically the first time a [`Dataset`] is constructed; also exported for
-/// callers that want to install it eagerly.
-#[wasm_bindgen]
-pub fn init() {
-    console_error_panic_hook::set_once();
-}
-
 /// Metadata for every built-in test, in registry order.
 ///
 /// Lets callers discover what is available without hardcoding a list of the

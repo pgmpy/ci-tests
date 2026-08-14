@@ -61,47 +61,26 @@ __all__ = [
 ]
 
 
-def _is_numpy_numeric(dtype: Any) -> bool:  # noqa: ANN401
-    """Return True iff *dtype* is a numpy numeric (number or bool) dtype.
+def _infer_kind(dtype: Any) -> str:  # noqa: ANN401 - a numpy/pandas dtype is opaque here
+    """Infer a column kind from a dtype, via pandas' own predicates.
 
-    Delegates to :func:`_safe_issubdtype`, which returns ``False`` (rather than
-    raising ``TypeError``) for pandas extension dtypes such as ``StringDtype``
-    or ``ArrowDtype`` that numpy cannot interpret.
+    Boolean, integer, categorical, object and string dtypes map to
+    ``"discrete"``, pandas nullable extension dtypes (``Int64``, ``boolean``)
+    included; float dtypes (``Float64`` included) map to ``"continuous"``.
+    Temporal dtypes are rejected explicitly; anything else (complex, interval,
+    ...) raises ``TypeError``.
     """
-    return _safe_issubdtype(dtype, np.number) or _safe_issubdtype(dtype, np.bool_)
+    import pandas as pd  # noqa: PLC0415 - optional dependency imported lazily
 
-
-def _safe_issubdtype(dtype: Any, base: Any) -> bool:  # noqa: ANN401
-    """Return whether ``dtype`` is a subtype of ``base`` without raising.
-
-    Pandas extension dtypes that NumPy cannot interpret return ``False``.
-    """
-    try:
-        return bool(np.issubdtype(dtype, base))
-    except TypeError:
-        return False
-
-
-def _infer_kind(dtype: Any) -> str:  # noqa: ANN401 - numpy/pandas dtype is opaque here
-    """Infer a column kind from a numpy/pandas dtype.
-
-    Integer, boolean, categorical, object and string dtypes map to
-    ``"discrete"``; floating dtypes map to ``"continuous"``. Anything else
-    raises ``TypeError``.
-    """
-    name = str(getattr(dtype, "name", dtype))
-    if name in ("category", "string", "str"):
-        return "discrete"
-    if dtype == np.object_ or _safe_issubdtype(dtype, np.str_):
-        return "discrete"
-    # Temporal dtypes are neither categorical nor plain-numeric; reject them
-    # explicitly (timedelta64 would otherwise pass the integer check below).
-    if _safe_issubdtype(dtype, np.datetime64) or _safe_issubdtype(dtype, np.timedelta64):
+    api = pd.api.types
+    if api.is_datetime64_any_dtype(dtype) or api.is_timedelta64_dtype(dtype):
         msg = f"cannot infer column kind for temporal dtype {dtype!r}; convert it explicitly first"
         raise TypeError(msg)
-    if _safe_issubdtype(dtype, np.floating):
+    if isinstance(dtype, pd.CategoricalDtype) or api.is_bool_dtype(dtype) or api.is_integer_dtype(dtype):
+        return "discrete"
+    if api.is_float_dtype(dtype):
         return "continuous"
-    if _safe_issubdtype(dtype, np.integer) or _safe_issubdtype(dtype, np.bool_):
+    if api.is_object_dtype(dtype) or api.is_string_dtype(dtype):
         return "discrete"
     msg = f"cannot infer column kind for dtype {dtype!r}; pass an explicit mapping"
     raise TypeError(msg)
@@ -122,12 +101,13 @@ class Dataset(_Dataset):
         """Build a :class:`Dataset` from a :class:`pandas.DataFrame`.
 
         Column kinds are inferred from dtypes: integer / boolean / categorical
-        / object / string columns become ``"discrete"`` and floating columns
-        become ``"continuous"``. Categorical and object/string columns are
-        factorized to integer codes; **missing values are mapped to NaN and
-        rejected by the core** (strict missing-data policy — drop or impute
-        first). ``pandas`` is imported lazily, so it is not a hard dependency
-        of this package.
+        / object / string columns become ``"discrete"`` and float columns
+        become ``"continuous"``, pandas nullable extension dtypes (``Int64``,
+        ``boolean``, ``Float64``) included. Categorical and object/string
+        columns are factorized to integer codes; **missing values — NaN or
+        ``pd.NA`` — are mapped to NaN and rejected by the core** (strict
+        missing-data policy — drop or impute first). ``pandas`` is imported
+        lazily, so it is not a hard dependency of this package.
 
         .. note::
             Passing a :class:`pandas.DataFrame` directly to any test
@@ -145,18 +125,20 @@ class Dataset(_Dataset):
         columns: dict[str, tuple[str, Any]] = {}
         for name in df.columns:
             series = df[name]
-            kind = _infer_kind(series.dtype)
-            dtype_name = str(getattr(series.dtype, "name", ""))
-            if dtype_name == "category":
-                codes = np.asarray(series.cat.codes, dtype=np.float64)
+            dtype = series.dtype
+            kind = _infer_kind(dtype)
+            if isinstance(dtype, pd.CategoricalDtype):
+                codes = series.cat.codes.to_numpy(dtype=np.float64)
                 codes[codes == -1.0] = np.nan  # missing category -> NaN -> core error
                 values = codes
-            elif kind == "discrete" and not _is_numpy_numeric(series.dtype):
+            elif kind == "discrete" and not (pd.api.types.is_bool_dtype(dtype) or pd.api.types.is_integer_dtype(dtype)):
                 raw, _ = pd.factorize(series)  # -1 marks missing
                 codes = raw.astype(np.float64)
                 codes[codes == -1.0] = np.nan
                 values = codes
             else:
-                values = np.asarray(series, dtype=np.float64)
+                # Plain and nullable numeric alike: NaN / pd.NA become NaN,
+                # which the core rejects with its usual missing-data error.
+                values = series.to_numpy(dtype=np.float64, na_value=np.nan)
             columns[str(name)] = (kind, values)
         return cls(columns)
