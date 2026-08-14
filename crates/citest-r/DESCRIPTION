@@ -6,7 +6,7 @@ Authors@R: c(
            role = c("aut", "cre")),
     person("GiPHouse", role = "aut"),
     person("The pgmpy Developers", role = "cph"),
-    person("Authors of the dependency Rust crates", role = "aut",
+    person("Authors of the dependency Rust crates", role = "ctb",
            comment = "see AUTHORS file"))
 Description: R bindings for a collection of conditional independence tests
     implemented in Rust. Supports discrete, continuous, and mixed data via

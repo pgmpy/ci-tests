@@ -32,12 +32,12 @@ Useful links:
 Authors:
 \itemize{
   \item GiPHouse
-  \item Authors of the dependency Rust crates (see AUTHORS file)
 }
 
 Other contributors:
 \itemize{
   \item The pgmpy Developers [copyright holder]
+  \item Authors of the dependency Rust crates (see AUTHORS file) [contributor]
 }
 
 }
