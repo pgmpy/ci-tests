@@ -31,7 +31,7 @@ Useful links:
 
 Authors:
 \itemize{
-  \item GiPHouse \email{giphouse@example.com}
+  \item GiPHouse
   \item Authors of the dependency Rust crates (see AUTHORS file)
 }
 

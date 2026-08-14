@@ -107,20 +107,22 @@ naming both parties.
 - `crates/citest-r/LICENSE`: `COPYRIGHT HOLDER: The pgmpy Developers`.
 - R `Authors@R`:
   ```r
-  c(person("GiPHouse", email = "giphouse@example.com", role = "aut"),
+  c(person("GiPHouse", role = "aut"),
     person("Ankur", "Ankan", email = "ankurankan@gmail.com",
            role = c("aut", "cre")),
-    person("The pgmpy Developers", role = "cph"))
+    person("The pgmpy Developers", role = "cph"),
+    person("Authors of the dependency Rust crates", role = "aut",
+           comment = "see AUTHORS file"))
   ```
 - Cargo `authors` and `pyproject.toml` `authors`: both parties.
 - README badges and the documentation URL move from
   `GiPHouse/Conditional-Independence-Testing` to `pgmpy/ci-tests`.
 
-**Known pre-submission item.** `giphouse@example.com` uses a domain reserved by
-RFC 2606 and can never receive mail. It is retained here at the maintainer's
-instruction and does not block CRAN mechanically, because CRAN validates the
-maintainer (`cre`) address, which is a real one. It must be replaced with a
-deliverable address before CRAN submission.
+GiPHouse is credited as an author with no email. The address previously
+recorded, `giphouse@example.com`, used a domain reserved by RFC 2606 and could
+never receive mail. R requires an address only for the maintainer (`cre`) role,
+so an author-only entry without one is valid and leaves no undeliverable
+address in the published metadata.
 
 ### A3. One version
 

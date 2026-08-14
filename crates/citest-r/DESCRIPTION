@@ -2,7 +2,7 @@ Package: citest
 Title: Conditional Independence Testing
 Version: 0.1.0
 Authors@R: c(
-    person("GiPHouse", email = "giphouse@example.com", role = "aut"),
+    person("GiPHouse", role = "aut"),
     person("Ankur", "Ankan", email = "ankurankan@gmail.com",
            role = c("aut", "cre")),
     person("The pgmpy Developers", role = "cph"),
