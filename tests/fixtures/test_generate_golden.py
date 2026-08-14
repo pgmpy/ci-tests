@@ -157,6 +157,53 @@ def test_write_and_check_fixture_are_separate_operations(tmp_path: Path) -> None
     assert output.read_text(encoding="utf-8") == changed
 
 
+def test_check_fixture_tolerates_expected_numeric_roundoff(tmp_path: Path) -> None:
+    generator = load_generator()
+    rendered = generator.render_cases(generator.build_cases())
+    committed = json.loads(rendered)
+    expected = committed[0]["expected"]
+    for field, delta in {
+        "statistic": 5e-8,
+        "p_value": -5e-8,
+        "effect_size": 5e-8,
+    }.items():
+        expected[field] += delta
+    output = tmp_path / "golden.json"
+    output.write_text(
+        json.dumps(committed, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+
+    assert generator.check_fixture(output, rendered) is True
+
+
+def test_check_fixture_rejects_meaningful_or_structural_drift(
+    tmp_path: Path,
+) -> None:
+    generator = load_generator()
+    rendered = generator.render_cases(generator.build_cases())
+    baseline = json.loads(rendered)
+    output = tmp_path / "golden.json"
+
+    changed = deepcopy(baseline)
+    changed[0]["expected"]["statistic"] += 2e-7
+    output.write_text(json.dumps(changed), encoding="utf-8")
+    assert generator.check_fixture(output, rendered) is False
+
+    changed = deepcopy(baseline)
+    changed[0]["columns"]["X"]["values"][0] += 1
+    output.write_text(json.dumps(changed), encoding="utf-8")
+    assert generator.check_fixture(output, rendered) is False
+
+    changed = deepcopy(baseline)
+    changed[0]["expected"]["statistic"] = 0
+    output.write_text(json.dumps(changed), encoding="utf-8")
+    assert generator.check_fixture(output, rendered) is False
+
+    output.write_text("{", encoding="utf-8")
+    assert generator.check_fixture(output, rendered) is False
+
+
 def test_cli_check_mode_never_creates_or_rewrites_output(tmp_path: Path) -> None:
     generator = load_generator()
     output = tmp_path / "golden.json"
@@ -171,7 +218,7 @@ def test_cli_check_mode_never_creates_or_rewrites_output(tmp_path: Path) -> None
 
     output.write_text(f"{original}\n", encoding="utf-8")
     changed = output.read_text(encoding="utf-8")
-    assert generator.main(["--check", "--output", str(output)]) == 1
+    assert generator.main(["--check", "--output", str(output)]) == 0
     assert output.read_text(encoding="utf-8") == changed
 
 
