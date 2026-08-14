@@ -66,6 +66,9 @@ def test_r_msrv_is_advertised_preflighted_and_exercised() -> None:
     workflow = load_workflow("r.yml")
     rust_step = named_step(workflow, "r-test", "Install Rust MSRV")
     assert rust_step["with"] == {"toolchain": "1.81.0"}
+    windows_target = named_step(workflow, "r-test", "Install Windows GNU Rust target")
+    assert windows_target["if"] == "runner.os == 'Windows'"
+    assert windows_target["run"] == "rustup target add x86_64-pc-windows-gnu"
 
 
 def test_js_distribution_license_and_wasm_pack_version_are_pinned() -> None:
@@ -79,7 +82,7 @@ def test_js_distribution_license_and_wasm_pack_version_are_pinned() -> None:
 
     workflow = load_workflow("js.yml")
     wasm_step = named_step(workflow, "js-test", "Install wasm-pack")
-    assert wasm_step["with"] == {"version": "0.15.0"}
+    assert wasm_step["with"] == {"version": "v0.15.0"}
 
 
 def test_js_uses_one_npm_project() -> None:
@@ -91,9 +94,7 @@ def test_js_uses_one_npm_project() -> None:
     for job_name in ("js-lint", "js-test"):
         job = workflow["jobs"][job_name]
         setup = next(
-            step
-            for step in job["steps"]
-            if step.get("uses") == "actions/setup-node@v4"
+            step for step in job["steps"] if step.get("uses") == "actions/setup-node@v4"
         )
         assert setup["with"]["cache-dependency-path"] == (
             "crates/ci-js/package-lock.json"

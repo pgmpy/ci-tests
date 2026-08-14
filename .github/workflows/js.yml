@@ -96,7 +96,7 @@ jobs:
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
         with:
-          version: 0.15.0
+          version: v0.15.0
 
       # Verified locally: builds into crates/ci-js/pkg (wasm-opt disabled via the
       # crate's package metadata). The vitest suite imports ../pkg/ci_js.js.
