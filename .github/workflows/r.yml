@@ -104,6 +104,11 @@ jobs:
       - name: Check packaged source and fixture drift
         run: python crates/citest-r/tools/sync_package_assets.py --check
 
+      # inst/AUTHORS is generated from the vendor archive, so a crate cannot
+      # enter the bundle without being attributed. CRAN requires this.
+      - name: Check bundled-crate attribution is current
+        run: python crates/citest-r/tools/generate_authors.py --check
+
       # jsonlite is declared in Suggests for the golden suite; install it
       # alongside devtools/rextendr/testthat.
       - name: Install R package dependencies
@@ -131,7 +136,7 @@ jobs:
           message("Checking built source archive: ", archive)
           devtools::check_built(
             archive,
-            cran = FALSE,
+            cran = TRUE,
             manual = FALSE,
             args = "--no-manual",
             error_on = "warning"

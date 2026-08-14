@@ -25,7 +25,7 @@ ROOT_MANIFEST = Path("Cargo.toml")
 # repository a redistributor, with the licensing obligations that implies.
 R_RUST_LOCKFILE = Path("crates/citest-r/src/rust/Cargo.lock")
 VENDOR_ARCHIVE = Path("crates/citest-r/src/rust/vendor.tar.xz")
-THIRD_PARTY_NOTICES = Path("crates/citest-r/THIRD-PARTY-NOTICES")
+AUTHORS_FILE = Path("crates/citest-r/inst/AUTHORS")
 
 # Crates whose source is redistributed under extendr's own MIT terms.
 EXTENDR_CRATES = frozenset({"extendr-api", "extendr-ffi", "extendr-macros"})
@@ -50,6 +50,25 @@ MIT_CLAUSES = (
 )
 
 
+def _strip_dev_dependencies(manifest: bytes) -> bytes:
+    """Drop `[dev-dependencies]` from the packaged copy of the core manifest.
+
+    The packaged core carries no `tests/` (only `Cargo.toml`, `README.md` and
+    `src/**` are copied), so its dev-dependencies are never compiled. Leaving
+    them declared makes `cargo vendor` bundle serde, serde_json and their
+    proc-macro trees into the R source package: seven crates and ~2.7 MB that
+    are shipped, licence-documented under CRAN policy, and never built.
+    """
+    out, skipping = [], False
+    for line in manifest.decode("utf-8").splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            skipping = stripped == "[dev-dependencies]"
+        if not skipping:
+            out.append(line)
+    return "".join(out).encode("utf-8")
+
+
 def _core_inputs(root: Path) -> list[Path]:
     core = root / CANONICAL_CORE
     return [core / "Cargo.toml", core / "README.md", *sorted((core / "src").rglob("*"))]
@@ -60,7 +79,10 @@ def _expected_assets(root: Path) -> dict[Path, bytes]:
     for source in _core_inputs(root):
         if source.is_file():
             relative = source.relative_to(root / CANONICAL_CORE)
-            expected[PACKAGED_CORE / relative] = source.read_bytes()
+            content = source.read_bytes()
+            if relative.as_posix() == "Cargo.toml":
+                content = _strip_dev_dependencies(content)
+            expected[PACKAGED_CORE / relative] = content
     expected[PACKAGED_FIXTURE] = (root / CANONICAL_FIXTURE).read_bytes()
     return expected
 
@@ -160,31 +182,35 @@ def _vendor_drift(root: Path) -> list[str]:
 
 
 def _notice_drift(root: Path) -> list[str]:
-    """The third-party notice reproduces extendr's upstream MIT attribution.
+    """`inst/AUTHORS` documents EVERY redistributed crate.
 
-    NOTE: this covers only the extendr crates. The archive vendors the full
-    dependency tree, and the notice does not yet name every redistributed
-    crate; widening it is tracked separately as CRAN preparation work.
+    CRAN's Rust policy requires the authorship and copyright of bundled Rust
+    sources to be documented. Checking coverage against the vendor archive
+    makes that complete by construction rather than by vigilance.
     """
-    notice_path = root / THIRD_PARTY_NOTICES
+    notice_path = root / AUTHORS_FILE
     if not notice_path.is_file():
-        return [f"missing third-party notice: {THIRD_PARTY_NOTICES.as_posix()}"]
+        return [f"missing authors file: {AUTHORS_FILE.as_posix()}"]
 
     notice = notice_path.read_text(encoding="utf-8")
     errors: list[str] = []
+
+    if (root / VENDOR_ARCHIVE).is_file():
+        manifests, _ = _vendored_manifests(root)
+        for name, version in sorted(manifests):
+            if f"{name} {version}" not in notice:
+                errors.append(f"inst/AUTHORS omits redistributed crate: {name} {version}")
+
     if "https://github.com/extendr/extendr" not in notice:
-        errors.append("third-party notice omits the extendr upstream source URL")
-    for crate in sorted(EXTENDR_CRATES):
-        if crate not in notice:
-            errors.append(f"third-party notice omits redistributed crate: {crate}")
+        errors.append("inst/AUTHORS omits the extendr upstream source URL")
     if EXTENDR_COPYRIGHT not in notice:
-        errors.append("third-party notice omits the extendr copyright line")
+        errors.append("inst/AUTHORS omits the extendr copyright line")
     for contributor in EXTENDR_CONTRIBUTORS:
         if contributor not in notice:
-            errors.append(f"third-party notice omits contributor: {contributor}")
+            errors.append(f"inst/AUTHORS omits contributor: {contributor}")
     for clause in MIT_CLAUSES:
         if clause not in notice:
-            errors.append(f"third-party notice omits an MIT clause: {clause[:40]}...")
+            errors.append(f"inst/AUTHORS omits an MIT clause: {clause[:40]}...")
     return errors
 
 

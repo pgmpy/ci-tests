@@ -1,7 +1,13 @@
 TARGET_DIR = ./rust/target
 LIBDIR = $(TARGET_DIR)/@LIBDIR@
 STATLIB = $(LIBDIR)/libcitestr.a
-PKG_LIBS = -L$(LIBDIR) -lcitestr
+# `-Wl,-S` strips DEBUG symbols from the linked shared object while keeping the
+# symbol table R needs for .registration. A Rust `staticlib` links in the
+# precompiled `std`, which ships with debug info, so the .so inherited ~4 MB of
+# .debug_* sections that no cargo profile setting can remove: `debug = false`
+# cannot unmake debug info that is already inside std, and cargo's `strip` is
+# not honoured for a staticlib because the linker still needs its symbols.
+PKG_LIBS = -L$(LIBDIR) -lcitestr -Wl,-S
 
 all: $(SHLIB) rust_clean
 

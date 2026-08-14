@@ -1,0 +1,147 @@
+name: Release
+
+# Publishes citest to crates.io, PyPI and npm from a `v*` tag.
+#
+# CRAN is deliberately NOT automated: submission is a manual, human-reviewed
+# process, and the R package may trail the other three by a patch release.
+# Run `R CMD check --as-cran` on the built archive and submit it by hand.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # A release is only coherent if every manifest agrees with the tag. Checking
+  # first means a mismatch costs nothing, rather than being discovered after
+  # one registry has already been published to irreversibly.
+  verify-versions:
+    name: Verify versions agree
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - id: check
+        run: python .github/scripts/check_versions.py "${GITHUB_REF_NAME}"
+
+  publish-crate:
+    name: crates.io
+    needs: [verify-versions]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify the packaged crate ships no tests
+        run: |
+          cargo package --list -p citest | tee /tmp/files
+          if grep -qE '^tests/' /tmp/files; then
+            echo "::error::packaged crate contains tests/"; exit 1
+          fi
+          grep -qx 'LICENSE' /tmp/files || { echo "::error::LICENSE missing"; exit 1; }
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: cargo publish -p citest --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+
+  publish-pypi:
+    name: PyPI
+    needs: [verify-versions]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+
+      # One abi3 wheel per OS covers every supported interpreter.
+      - name: Build wheel
+        run: pipx run maturin build --release --manifest-path crates/citest-python/Cargo.toml --out dist
+
+      - name: Build sdist
+        if: runner.os == 'Linux'
+        run: pipx run maturin sdist --manifest-path crates/citest-python/Cargo.toml --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist
+
+  upload-pypi:
+    name: Upload to PyPI
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write        # trusted publishing; no API token stored
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        if: ${{ !inputs.dry_run }}
+
+  publish-npm:
+    name: npm
+    needs: [verify-versions]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: v0.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+
+      - name: Build wasm package
+        run: wasm-pack build crates/citest-js --target nodejs --release
+
+      # wasm-pack derives the npm name from the Cargo package, which must be
+      # citest-js to stay unique inside the workspace. The published package is
+      # `citest`, so rewrite the generated manifest.
+      - name: Set published package name
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("crates/citest-js/pkg/package.json")
+          d = json.loads(p.read_text())
+          d["name"] = "citest"
+          d["repository"] = {"type": "git", "url": "git+https://github.com/pgmpy/ci-tests.git"}
+          d["homepage"] = "https://github.com/pgmpy/ci-tests"
+          p.write_text(json.dumps(d, indent=2) + "\n")
+          print(json.dumps(d, indent=2))
+          PY
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --access public
+        working-directory: crates/citest-js/pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

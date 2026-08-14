@@ -37,3 +37,16 @@ path = 'document.rs'
 [dependencies]
 citest = { path = 'citest' }
 extendr-api = '0.9.0'
+
+# This is a SEPARATE workspace from the repository root, so it inherits none of
+# the root's profile settings. Without these the R package built a release
+# .so with no LTO, pushing the installed size past CRAN's 5 MB threshold.
+[profile.release]
+lto = true
+codegen-units = 1
+# `strip` is not honoured for a staticlib (the linker still needs its symbols),
+# so suppress debug info at generation instead. Without this the linked .so
+# carried ~4 MB of .debug_* sections and the installed package was 6.2 MB
+# against CRAN's 5 MB threshold.
+debug = false
+debug-assertions = false

@@ -18,9 +18,5 @@ exclude = ["tests/**"]
 statrs = { workspace = true }
 thiserror = "2"
 
-[dev-dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
 [lints]
 workspace = true
