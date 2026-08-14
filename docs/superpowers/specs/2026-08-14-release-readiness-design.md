@@ -185,7 +185,30 @@ It is deleted. Its two genuine contracts move into
   published artifact is the wasm-pack output in `pkg/`, and the release workflow
   publishes from there.
 
-### A10. Documentation truth-up
+### A10. Repair the weakened R parity gate
+
+The four golden harnesses are advertised as one gate at an absolute `1e-7`, and
+three of them are:
+
+| Harness | Comparison |
+|---|---|
+| `crates/citest/tests/golden.rs:191` | `(act - exp).abs() < TOL` |
+| `crates/citest-python/test/test_golden.py:87` | `pytest.approx(exp, abs=TOL, rel=0.0)` |
+| `crates/citest-js/tests/golden.test.js:122` | `Math.abs(actual - exp) <= TOL` |
+| `crates/citest-r/tests/testthat/test-golden.R:91` | `expect_equal(act, exp, tolerance = tol)` |
+
+R's bare `tolerance =` routes, under testthat 3rd edition, to waldo's
+`all.equal`-style **relative** difference whenever `mean(abs(expected))` exceeds
+the tolerance. The fixture's largest `|statistic|` is `26.1558538058`, so R's
+effective bound there is `2.6e-6` — **26.2× looser** than the other three. It is
+never stricter, so this is a silently weakened gate rather than a flaky one.
+
+This is promoted from Stage D into Stage A: it is a one-line fix, and shipping
+packages as "release ready" while one of the four parity gates is knowingly
+weaker than advertised is not defensible. Replace with an explicit absolute
+comparison matching the other three.
+
+### A11. Documentation truth-up
 
 - CONTRIBUTING's instruction to run JS tests "from `crates/ci-js/tests`"
   describes a directory removed by an earlier consolidation.
@@ -211,6 +234,34 @@ Confined to the core crate; no binding changes.
   `LAMBDA` constant, at roughly 52 lines each. The generated public API is
   unchanged: the types keep their names, their `yates` field, their derives and
   their per-type documentation.
+
+  **Recorded dissent.** The audit's synthesis argued against this, on the
+  grounds that the five files are public API surface carrying doc comments and
+  that hiding them inside `macro_rules!` degrades rustdoc and greppability to
+  save ~200 lines in a ~3,554-line crate. The maintainer chose to proceed. The
+  objection is answered by construction rather than overruled: the macro takes
+  a per-invocation `$doc:literal`, so each type keeps its own prose — including
+  the details that genuinely differ, such as `ModifiedLikelihood`'s `+∞` at a
+  structural zero and `CressieRead`'s "recommended compromise" framing — and
+  rustdoc output is unchanged. Greppability is preserved because each
+  invocation names its type on one line. If review of the generated rustdoc
+  shows otherwise, revert to five files; the decision is cheap to undo.
+
+- **Decide the fate of the Householder-QR residual path.** `partial_correlation`
+  (`pearson_correlation.rs:252`) dispatches on `data.gram()`, and
+  `GramCache::build` returns `None` only when `n == 0 || p == 0 || p > 2048`
+  (`gram.rs:52`). At `p == 0` the residual path errors immediately on
+  `data.continuous(x)?`, and at `n == 0` on `check_row_count`. The only input
+  for which it returns `Ok` is a dataset with **more than 2048 continuous
+  columns**; the widest golden case has 4. That is a second, numerically
+  distinct implementation of the library's headline computation with zero
+  end-to-end coverage — roughly 210 production and 56 test lines.
+
+  Either delete it and turn the column cap into an explicit documented error, or
+  keep it and add an integration test that actually reaches it through
+  `CITest::test`. Deleting is recommended: an unvalidated silent algorithm
+  switch is a liability, not a safety net. This needs a maintainer decision
+  before Stage B begins.
 - Add a continuous counterpart to `discrete_common.rs`. `FisherZ` and
   `PearsonEquivalence` duplicate the whole Fisher-z preamble: clip `rho`,
   compute `sqrt(n - |Z| - 3)`, construct the standard normal.
@@ -234,6 +285,13 @@ Fix only genuine disagreements; keep idiomatic shapes.
   query and kind failures raise `CiError`, so `except CiError` silently misses
   half the failure modes. Make `CiError` inherit from `ValueError` and raise it
   uniformly; both spellings then catch everything, and no existing code breaks.
+  `CiError.__module__` is also wrong, which breaks pickling.
+- **No error carries the core's error kind.** `CiError` is seven variants in
+  Rust, but every binding flattens it to a message string. The consequence is
+  visible in this repository's own suites, which match on message prose rather
+  than on a kind (`test-api.R:143,198`; `test_api.py:139,216`) — the same thing
+  a downstream consumer is forced to do. Add a machine-readable discriminant to
+  `CiError` and surface it in all three bindings.
 - **Stub drift.** The hand-written `.pyi` has already drifted from
   `src/lib.rs` and nothing in CI checks it. Add a consistency gate.
 - **R has no `meta()`.** Python and JS expose it; R does not, and therefore
@@ -261,10 +319,6 @@ Fix only genuine disagreements; keep idiomatic shapes.
 
 ## Stage D — Test and CI Architecture
 
-- **The four golden harnesses are not the same gate.** R compares with a
-  *relative* tolerance where the other three use an absolute one, making it
-  roughly 26× looser at the fixture's largest statistic. Unify the comparison
-  policy.
 - **The fixture is tracked twice**, at roughly 287 KB per copy for 80 cases,
   and the generator writes only one of the two. Make the R copy a build artifact
   of the sync tool rather than an independently tracked file.
@@ -274,6 +328,12 @@ Fix only genuine disagreements; keep idiomatic shapes.
   abi3 wheel.
 - **The fixture-currency check runs twice** in `python.yml`, once as a pytest
   and once as a CLI invocation.
+- **`extendr_module!` duplicates the macro invocation list.** Omitting an entry
+  compiles cleanly and silently drops the class from R. Emit both the handle and
+  its registration from one table.
+- **`docs/superpowers/` is 3,771 lines, about 79% of all markdown in the
+  repository**, and consists of executed plans describing repo states that no
+  longer exist. Prune to the specs that still describe current intent.
 
 ## Risks and Constraints
 
