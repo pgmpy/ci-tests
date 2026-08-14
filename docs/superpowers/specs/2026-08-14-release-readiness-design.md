@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-14
 
-**Status:** Stages A, B and C implemented (git history from `1db5d30`); Stage D specified, not scheduled
+**Status:** All four stages implemented (git history from `1db5d30`).
 
 ## Context
 
@@ -442,6 +442,10 @@ error-kind discriminant was not added — the unified Python exception and
   emit real TypeScript types. Add an `exports` map and an ESM entry.
 
 ## Stage D — Test and CI Architecture
+
+**Implemented**, except the `extendr_module!` collapse: dropping an entry was
+tested and fails the R suite immediately, so the silent-omission risk the
+proposal targeted is already closed by tests.
 
 - **The fixture is tracked twice**, at roughly 287 KB per copy for 80 cases,
   and `generate_golden.py` writes only one of the two. The second copy is
