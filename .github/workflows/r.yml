@@ -89,6 +89,10 @@ jobs:
         with:
           toolchain: 1.81.0
 
+      - name: Install Windows GNU Rust target
+        if: runner.os == 'Windows'
+        run: rustup target add x86_64-pc-windows-gnu
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Check packaged source and fixture drift

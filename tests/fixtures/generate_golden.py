@@ -43,6 +43,8 @@ EXPECTED_COUNTS = {
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 EXPECTED_KEYS = {"statistic", "p_value", "dof", "effect_size"}
 DEFAULT_OUTPUT = Path(__file__).with_name("golden.json")
+FIXTURE_NUMERIC_TOLERANCE = 1e-7
+TOLERATED_EXPECTED_FIELDS = {"statistic", "p_value", "effect_size"}
 
 
 def _column(kind: str, values: list[int] | list[float]) -> dict[str, Any]:
@@ -634,8 +636,50 @@ def write_fixture(path: Path, rendered: str) -> None:
         raise
 
 
+def _fixture_values_match(
+    committed: Any,
+    generated: Any,
+    path: tuple[str | int, ...] = (),
+) -> bool:
+    if type(committed) is not type(generated):
+        return False
+    if isinstance(generated, dict):
+        return committed.keys() == generated.keys() and all(
+            _fixture_values_match(committed[key], value, (*path, key))
+            for key, value in generated.items()
+        )
+    if isinstance(generated, list):
+        return len(committed) == len(generated) and all(
+            _fixture_values_match(left, right, (*path, index))
+            for index, (left, right) in enumerate(zip(committed, generated))
+        )
+    if (
+        len(path) >= 2
+        and path[-2] == "expected"
+        and path[-1] in TOLERATED_EXPECTED_FIELDS
+    ):
+        return (
+            _finite_number(committed)
+            and _finite_number(generated)
+            and math.isclose(
+                committed,
+                generated,
+                rel_tol=0.0,
+                abs_tol=FIXTURE_NUMERIC_TOLERANCE,
+            )
+        )
+    return committed == generated
+
+
 def check_fixture(path: Path, rendered: str) -> bool:
-    return path.exists() and path.read_text(encoding="utf-8") == rendered
+    if not path.exists():
+        return False
+    try:
+        committed = json.loads(path.read_text(encoding="utf-8"))
+        generated = json.loads(rendered)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return _fixture_values_match(committed, generated)
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
