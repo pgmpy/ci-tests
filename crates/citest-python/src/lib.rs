@@ -24,6 +24,7 @@ use citest::strategy::{CITest, CiResult as CoreResult, DataType, IndependenceRul
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySequence, PyString, PyTuple};
+use pyo3::wrap_pyfunction;
 
 // Subclassing ValueError rather than Exception means the two ways a caller
 // might reasonably write the handler -- `except CiError` and `except
@@ -495,11 +496,24 @@ ci_test_class!(
     }
 );
 
+/// Metadata for every built-in test, in registry order.
+///
+/// Lets callers discover what is available without hardcoding a list of the
+/// eight classes, and read each test's decision rule rather than assuming it.
+#[pyfunction]
+fn list_tests(py: Python<'_>) -> PyResult<Vec<Py<PyDict>>> {
+    citest::all_metas()
+        .iter()
+        .map(|meta| meta_to_py(py, meta))
+        .collect()
+}
+
 /// The native extension module (`citest._citest`).
 #[pymodule]
 #[pyo3(name = "_citest")]
 fn citest_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CiError", m.py().get_type::<CiError>())?;
+    m.add_function(wrap_pyfunction!(list_tests, m)?)?;
     m.add_class::<PyDataset>()?;
     m.add_class::<PyCiResult>()?;
     m.add_class::<PyChiSquared>()?;

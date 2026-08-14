@@ -278,8 +278,18 @@ ci_test_handle!(
     }
 );
 
+/// Metadata for every built-in test, in registry order.
+///
+/// Lets callers discover what is available without hardcoding a list of the
+/// eight factories, and read each test's decision rule rather than assuming it.
+#[extendr]
+fn list_tests() -> List {
+    List::from_values(citest::all_metas().iter().map(meta_to_list))
+}
+
 extendr_module! {
     mod citest;
+    fn list_tests;
     impl Dataset;
     impl ChiSquared;
     impl LogLikelihood;

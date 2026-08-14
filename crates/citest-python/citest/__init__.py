@@ -36,6 +36,7 @@ from citest._citest import (
     ModifiedLikelihood,
     PearsonCorrelation,
     PearsonEquivalence,
+    list_tests,
 )
 from citest._citest import (
     Dataset as _Dataset,
@@ -56,6 +57,7 @@ __all__ = [
     "ModifiedLikelihood",
     "PearsonCorrelation",
     "PearsonEquivalence",
+    "list_tests",
 ]
 
 

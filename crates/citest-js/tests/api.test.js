@@ -11,6 +11,7 @@ const {
   PearsonCorrelation,
   PearsonEquivalence,
   init,
+  listTests,
 } = pkg;
 
 beforeAll(() => init());
@@ -331,5 +332,34 @@ describe("conditioning-set argument", () => {
     const chi = new ChiSquared(data());
     expect(chi.runTest("A", "B", ["Zc"]).dof).toBe(2);
     expect(chi.runTest("A", "B", []).dof).toBe(1);
+  });
+});
+
+describe("registry", () => {
+  const className = (stable) =>
+    stable
+      .split("_")
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join("");
+
+  test("every registered test is exported, and every export is registered", () => {
+    // The core registry is the single source of truth. Without this check a
+    // ninth test could be added to the core and silently missing here.
+    const registered = listTests().map((m) => m.name);
+    expect(registered).toHaveLength(8);
+    for (const name of registered) {
+      expect(
+        pkg[className(name)],
+        `${name} is registered but not exported`,
+      ).toBeTypeOf("function");
+    }
+  });
+
+  test("reports each test's data types and decision rule", () => {
+    const byName = Object.fromEntries(listTests().map((m) => [m.name, m]));
+    expect(byName.chi_squared.rule).toBe("p_value_ge");
+    expect(byName.chi_squared.dataTypes).toEqual(["discrete"]);
+    expect(byName.pearson_equivalence.rule).toBe("p_value_lt");
+    expect(byName.fisher_z.dataTypes).toEqual(["continuous"]);
   });
 });

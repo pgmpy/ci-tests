@@ -356,6 +356,21 @@ meta <- function(test) {
   test$handle$meta()
 }
 
+#' List every available conditional-independence test.
+#'
+#' Reports what the package provides, straight from the core registry, so
+#' callers do not have to hardcode the set of factories or guess how each
+#' test's p-value should be read.
+#'
+#' @return A list with one entry per test, each a named list as returned by
+#'   [meta()]: `name`, `data_types`, `symmetric` and `rule`.
+#' @examples
+#' vapply(list_tests(), function(m) m$name, character(1))
+#' @export
+list_tests <- function() {
+  .Call(wrap__list_tests) # nolint: object_usage_linter.
+}
+
 #' Normalize a conditioning-set argument to a character vector.
 #'
 #' Accepts `NULL`, a character vector, or a single name; never a non-character.

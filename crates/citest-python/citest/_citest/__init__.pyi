@@ -80,3 +80,7 @@ class PearsonEquivalence(_BaseTest):
         data: Dataset | dict[str, ColumnSpec] | pd.DataFrame,
         delta_threshold: float = ...,
     ) -> None: ...
+
+def list_tests() -> list[dict[str, Any]]:
+    """Metadata for every built-in test, in registry order."""
+    ...

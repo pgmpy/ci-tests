@@ -253,3 +253,38 @@ test_that("as_pcalg() refuses inverted-rule tests by asking their metadata", {
   disguised$name <- "some_future_equivalence_test"
   expect_error(as_pcalg(disguised), "inverted decision rule")
 })
+
+test_that("registry and R factories agree in both directions", {
+  # The core registry is the single source of truth. Without this check a ninth
+  # test could be added to the core and silently missing from this binding.
+  registered <- vapply(list_tests(), function(m) m$name, character(1))
+  expect_length(registered, 8L)
+
+  exported <- ls(asNamespace("citest"))
+  for (name in registered) {
+    expect_true(
+      name %in% exported,
+      info = sprintf("%s is registered in the core but has no R factory", name)
+    )
+  }
+
+  df <- data.frame(A = sample(0:1, 30, TRUE), X = rnorm(30))
+  ds <- dataset(df)
+  for (name in registered) {
+    built <- do.call(name, list(ds))
+    expect_s3_class(built, "citest_test")
+    expect_equal(meta(built)$name, name)
+  }
+})
+
+test_that("list_tests() reports each decision rule", {
+  metas <- list_tests()
+  by_name <- stats::setNames(
+    metas,
+    vapply(metas, function(m) m$name, character(1))
+  )
+  expect_equal(by_name$chi_squared$rule, "p_value_ge")
+  expect_equal(by_name$chi_squared$data_types, "discrete")
+  expect_equal(by_name$pearson_equivalence$rule, "p_value_lt")
+  expect_equal(by_name$fisher_z$data_types, "continuous")
+})

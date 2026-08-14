@@ -5,6 +5,12 @@
 #' @useDynLib citest, .registration = TRUE
 NULL
 
+#' Metadata for every built-in test, in registry order.
+#'
+#' Lets callers discover what is available without hardcoding a list of the
+#' eight factories, and read each test's decision rule rather than assuming it.
+list_tests <- function() .Call(wrap__list_tests)
+
 #' A named, typed, immutable table of columns shared by the test handles.
 #'
 #' Built from R via the `new` constructor, which takes the column names, a

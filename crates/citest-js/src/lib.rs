@@ -88,6 +88,16 @@ pub fn init() {
     console_error_panic_hook::set_once();
 }
 
+/// Metadata for every built-in test, in registry order.
+///
+/// Lets callers discover what is available without hardcoding a list of the
+/// eight classes, and read each test's decision rule rather than assuming it.
+#[wasm_bindgen(js_name = listTests, unchecked_return_type = "TestMeta[]")]
+#[must_use]
+pub fn list_tests() -> js_sys::Array {
+    citest::all_metas().iter().map(meta_to_js).collect()
+}
+
 /// Map a core [`CoreError`] onto a thrown JS `Error`.
 fn to_js_error(err: &CoreError) -> JsValue {
     js_sys::Error::new(&err.to_string()).into()

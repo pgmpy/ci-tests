@@ -8,7 +8,16 @@ import threading
 import numpy as np
 import pytest
 
-from citest import ChiSquared, CiError, Dataset, FisherZ, PearsonCorrelation, PearsonEquivalence
+import citest
+from citest import (
+    ChiSquared,
+    CiError,
+    Dataset,
+    FisherZ,
+    PearsonCorrelation,
+    PearsonEquivalence,
+    list_tests,
+)
 
 
 def _discrete_data() -> Dataset:
@@ -349,3 +358,34 @@ def test_cierror_is_picklable() -> None:
     payload = pickle.dumps(CiError("boom"))
     restored = pickle.loads(payload)  # noqa: S301 - round-tripping our own object
     assert isinstance(restored, CiError)
+
+
+def test_registry_and_exported_classes_agree() -> None:
+    """Every registered test is exported, and every export is registered.
+
+    The core registry is the single source of truth. Without this check a ninth
+    test could be added to the core and silently missing from this binding.
+    """
+    registered = {meta["name"] for meta in list_tests()}
+    assert len(registered) == 8
+
+    # "chi_squared" -> "ChiSquared"
+    def to_class_name(stable: str) -> str:
+        return "".join(part.capitalize() for part in stable.split("_"))
+
+    for name in registered:
+        cls = to_class_name(name)
+        assert hasattr(citest, cls), f"{name} is registered but {cls} is not exported"
+        assert cls in citest.__all__
+
+    exported_tests = {name for name in citest.__all__ if name not in {"Dataset", "CiError", "CiResult", "list_tests"}}
+    assert {to_class_name(n) for n in registered} == exported_tests
+
+
+def test_list_tests_reports_each_decision_rule() -> None:
+    by_name = {meta["name"]: meta for meta in list_tests()}
+    assert by_name["chi_squared"]["rule"] == "p_value_ge"
+    assert by_name["chi_squared"]["data_types"] == ["discrete"]
+    # The equivalence test is the one with the inverted convention.
+    assert by_name["pearson_equivalence"]["rule"] == "p_value_lt"
+    assert by_name["fisher_z"]["data_types"] == ["continuous"]
