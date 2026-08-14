@@ -3,7 +3,7 @@
 R bindings for the `citest` Rust library: data-bound conditional-independence
 (CI) tests with one uniform surface. Bind a data.frame once, then run any
 number of `X ⟂ Y | Z` queries against it. See the
-[repository README](../../README.md) for the cross-language story.
+[repository README](https://github.com/pgmpy/ci-tests/blob/main/README.md) for the cross-language story.
 
 ## Install
 

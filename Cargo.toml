@@ -6,6 +6,13 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["GiPHouse", "Ankur Ankan <ankurankan@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/pgmpy/ci-tests"
+
 [workspace.dependencies]
 statrs = { version = "0.18.0", default-features = false }
 

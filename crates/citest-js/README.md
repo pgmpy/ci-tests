@@ -28,4 +28,4 @@ npm test
 ```
 
 For browser builds, the complete API, and contribution guidance, see the root
-[README](../../README.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md).
+[README](https://github.com/pgmpy/ci-tests/blob/main/README.md) and [CONTRIBUTING.md](https://github.com/pgmpy/ci-tests/blob/main/CONTRIBUTING.md).

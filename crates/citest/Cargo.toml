@@ -1,11 +1,11 @@
 [package]
 name = "citest"
-version = "0.1.0"
-edition = "2021"
-authors = ["Ankur Ankan <ankurankan@gmail.com>"]
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Conditional Independence Testing"
-repository = "https://github.com/pgmpy/ci-tests"
+repository.workspace = true
 keywords = ["statistics", "causal-inference", "conditional-independence"]
 categories = ["science"]
 

@@ -1,11 +1,11 @@
 [package]
 name = "citest-js"
-version = "0.1.0"
-edition = "2021"
-authors = ["Ankur Ankan <ankurankan@gmail.com>"]
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "wasm-pack bindings for Conditional Independence Testing"
-repository = "https://github.com/pgmpy/ci-tests"
+repository.workspace = true
 publish = false
 
 [lib]

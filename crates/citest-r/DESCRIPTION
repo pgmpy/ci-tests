@@ -1,13 +1,21 @@
 Package: citest
 Title: Conditional Independence Testing
 Version: 0.1.0
-Authors@R:
-    person("GIP", "House", email = "giphouse@example.com", role = c("aut", "cre"))
+Authors@R: c(
+    person("GiPHouse", email = "giphouse@example.com", role = "aut"),
+    person("Ankur", "Ankan", email = "ankurankan@gmail.com",
+           role = c("aut", "cre")),
+    person("The pgmpy Developers", role = "cph"),
+    person("Authors of the dependency Rust crates", role = "aut",
+           comment = "see AUTHORS file"))
 Description: R bindings for a collection of conditional independence tests
     implemented in Rust. Supports discrete, continuous, and mixed data via
-    chi-squared, log-likelihood, Cressie-Read, Freeman-Tukey, Pearson
-    correlation, modified log-likelihood, and Pearson equivalence tests.
+    chi-squared, log-likelihood, Cressie-Read, Freeman-Tukey, modified
+    log-likelihood, Pearson correlation, Fisher-z, and Pearson equivalence
+    tests.
 License: MIT + file LICENSE
+URL: https://github.com/pgmpy/ci-tests
+BugReports: https://github.com/pgmpy/ci-tests/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

@@ -1,6 +1,6 @@
 # citest
 
-Python bindings for the [Conditional Independence Testing](../../README.md) library.
+Python bindings for the [Conditional Independence Testing](https://github.com/pgmpy/ci-tests/blob/main/README.md) library.
 Wraps the data-bound Rust core via [PyO3](https://pyo3.rs).
 
 The API is **data-bound**: build a `Dataset` once from named, typed columns, then
@@ -111,4 +111,4 @@ scipy/pgmpy fixture (`tests/fixtures/golden.json`).
 
 ## License
 
-Licensed under the [MIT license](../../LICENSE).
+Licensed under the [MIT license](https://github.com/pgmpy/ci-tests/blob/main/LICENSE).
