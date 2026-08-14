@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pickle
 import threading
 
 import numpy as np
@@ -307,3 +308,44 @@ def test_from_pandas_string_dtype_column() -> None:
     data = Dataset.from_pandas(df)
     res = ChiSquared(data).run_test("A", "B")
     assert 0.0 <= res.p_value <= 1.0
+
+
+def test_every_failure_mode_is_a_cierror() -> None:
+    """One exception type covers every way a query can fail.
+
+    Column lookups used to raise a bare ValueError while engine faults raised
+    CiError, so ``except CiError`` silently missed half the failure modes.
+    """
+    data = Dataset(
+        {
+            "A": ("discrete", np.array([0.0, 1.0, 0.0, 1.0])),
+            "B": ("discrete", np.array([1.0, 1.0, 0.0, 0.0])),
+            "X": ("continuous", np.array([0.1, 0.2, 0.3, 0.4])),
+        }
+    )
+    test = ChiSquared(data)
+    failures = [
+        ("unknown column name", lambda: test.run_test("nope", "B")),
+        ("out-of-range index", lambda: test.run_test(99, 1)),
+        ("x equals y", lambda: test.run_test("A", "A")),
+        ("wrong column kind", lambda: test.run_test("A", "X")),
+        ("bad conditioning column", lambda: test.run_test("A", "B", ["X"])),
+        ("bare string z", lambda: test.run_test("A", "B", "B")),
+    ]
+    assert issubclass(CiError, ValueError), "code written against the previous behaviour catches ValueError"
+    for label, call in failures:
+        try:
+            call()
+        except CiError:
+            continue
+        except Exception as exc:  # noqa: BLE001 - the point is that nothing else escapes
+            pytest.fail(f"{label} raised {type(exc).__name__}, not CiError")
+        pytest.fail(f"{label} did not raise at all")
+
+
+def test_cierror_is_picklable() -> None:
+    """A wrong __module__ made the exception unpicklable across processes."""
+    assert CiError.__module__ == "citest._citest"
+    payload = pickle.dumps(CiError("boom"))
+    restored = pickle.loads(payload)  # noqa: S301 - round-tripping our own object
+    assert isinstance(restored, CiError)

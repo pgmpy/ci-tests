@@ -22,15 +22,24 @@ use citest::dataset::{ColumnKind, Dataset as CoreDataset};
 use citest::error::CiError as CoreError;
 use citest::strategy::{CITest, CiResult as CoreResult, DataType, IndependenceRule, TestMeta};
 use numpy::PyReadonlyArray1;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PySequence, PyString, PyTuple};
 
+// Subclassing ValueError rather than Exception means the two ways a caller
+// might reasonably write the handler -- `except CiError` and `except
+// ValueError` -- both catch every failure this module raises. Before, column
+// lookups raised a bare ValueError and engine faults raised CiError, so
+// `except CiError` silently missed half the failure modes.
+//
+// The module path must be the importable one (`citest._citest`), not the bare
+// module name, or the class cannot be pickled.
 pyo3::create_exception!(
-    _citest,
+    citest._citest,
     CiError,
-    pyo3::exceptions::PyException,
-    "Raised when the core conditional-independence engine reports an error."
+    pyo3::exceptions::PyValueError,
+    "Raised for every error this module reports: a bad column reference, a \
+     malformed query, unsuitable data, or an engine fault.\n\n\
+     Subclasses :class:`ValueError`."
 );
 
 /// Map a core [`CoreError`] onto the Python [`CiError`] exception.
@@ -44,11 +53,11 @@ fn resolve_column(data: &CoreDataset, obj: &Bound<'_, PyAny>) -> PyResult<usize>
     if let Ok(name) = obj.downcast::<PyString>() {
         let name = name.to_cow()?;
         data.index_of(&name)
-            .ok_or_else(|| PyValueError::new_err(format!("unknown column name: {name:?}")))
+            .ok_or_else(|| CiError::new_err(format!("unknown column name: {name:?}")))
     } else if let Ok(idx) = obj.extract::<isize>() {
         let n_cols = data.n_cols();
         let out_of_range = || {
-            PyValueError::new_err(format!(
+            CiError::new_err(format!(
                 "column index {idx} out of range for dataset with {n_cols} columns"
             ))
         };
@@ -64,7 +73,7 @@ fn resolve_column(data: &CoreDataset, obj: &Bound<'_, PyAny>) -> PyResult<usize>
         }
         Ok(resolved)
     } else {
-        Err(PyValueError::new_err(
+        Err(CiError::new_err(
             "column reference must be a str name or an integer index",
         ))
     }
@@ -77,13 +86,13 @@ fn resolve_z(data: &CoreDataset, z: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<u
     };
     // A bare string would iterate character-by-character, which is never intended.
     if z.is_instance_of::<PyString>() {
-        return Err(PyValueError::new_err(
+        return Err(CiError::new_err(
             "z must be a sequence of column references, not a single string",
         ));
     }
     let seq = z
         .downcast::<PySequence>()
-        .map_err(|_| PyValueError::new_err("z must be a sequence of column names or indices"))?;
+        .map_err(|_| CiError::new_err("z must be a sequence of column names or indices"))?;
     let len = seq.len()?;
     let mut indices = Vec::with_capacity(len);
     for i in 0..len {
@@ -175,7 +184,7 @@ fn parse_kind(kind: &str) -> PyResult<ColumnKind> {
     match kind {
         "discrete" => Ok(ColumnKind::Discrete),
         "continuous" => Ok(ColumnKind::Continuous),
-        other => Err(PyValueError::new_err(format!(
+        other => Err(CiError::new_err(format!(
             "column kind must be 'discrete' or 'continuous', got {other:?}"
         ))),
     }
@@ -204,7 +213,7 @@ fn extract_values(kind: ColumnKind, obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>
             let mut codes = Vec::with_capacity(items.len());
             for item in &items {
                 let key: String = item.extract().map_err(|_| {
-                    PyValueError::new_err("discrete column values must be numbers or strings")
+                    CiError::new_err("discrete column values must be numbers or strings")
                 })?;
                 #[allow(clippy::cast_precision_loss)]
                 let next = lookup.len() as f64;
@@ -212,7 +221,7 @@ fn extract_values(kind: ColumnKind, obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>
             }
             Ok(codes)
         }
-        ColumnKind::Continuous => Err(PyValueError::new_err(
+        ColumnKind::Continuous => Err(CiError::new_err(
             "continuous column values must be numeric",
         )),
     }
@@ -232,14 +241,14 @@ impl PyDataset {
         for (key, value) in columns.iter() {
             let name: String = key
                 .extract()
-                .map_err(|_| PyValueError::new_err("Dataset column names must be strings"))?;
+                .map_err(|_| CiError::new_err("Dataset column names must be strings"))?;
             let spec = value.downcast::<PyTuple>().map_err(|_| {
-                PyValueError::new_err(format!(
+                CiError::new_err(format!(
                     "column {name:?} must map to a (kind, values) tuple"
                 ))
             })?;
             if spec.len() != 2 {
-                return Err(PyValueError::new_err(format!(
+                return Err(CiError::new_err(format!(
                     "column {name:?} must map to a (kind, values) 2-tuple"
                 )));
             }
@@ -269,7 +278,7 @@ impl PyDataset {
     fn index_of(&self, name: &str) -> PyResult<usize> {
         self.inner
             .index_of(name)
-            .ok_or_else(|| PyValueError::new_err(format!("unknown column name: {name:?}")))
+            .ok_or_else(|| CiError::new_err(format!("unknown column name: {name:?}")))
     }
 
     fn __repr__(&self) -> String {
@@ -301,7 +310,7 @@ impl PyDataset {
             let ds = built.extract::<PyRef<'_, PyDataset>>()?;
             Ok(Arc::clone(&ds.inner))
         } else {
-            Err(PyValueError::new_err(
+            Err(CiError::new_err(
                 "expected a Dataset, a {name: (kind, values)} mapping, or a pandas DataFrame",
             ))
         }

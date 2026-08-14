@@ -11,7 +11,13 @@ if TYPE_CHECKING:
 ColumnRef = str | int
 ColumnSpec = tuple[str, Any]
 
-class CiError(Exception): ...
+class CiError(ValueError):
+    """Raised for every error this module reports.
+
+    Subclasses :class:`ValueError`, so both ``except CiError`` and
+    ``except ValueError`` catch every failure mode.
+    """
+    ...
 
 class CiResult:
     @property
