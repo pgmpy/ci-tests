@@ -42,7 +42,7 @@
 
 pub mod ci_tests;
 pub mod dataset;
-pub mod discrete;
+pub(crate) mod discrete;
 pub mod error;
 pub(crate) mod gram;
 pub mod registry;

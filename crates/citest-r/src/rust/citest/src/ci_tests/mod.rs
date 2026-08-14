@@ -1,27 +1,20 @@
 //! Concrete conditional-independence tests.
 //!
 //! Five discrete power-divergence tests ([`ChiSquared`], [`LogLikelihood`],
-//! [`CressieRead`], [`FreemanTukey`], [`ModifiedLikelihood`]) share the
-//! λ-parameterized discrete back-end via [`discrete_common`]; three continuous
-//! tests ([`PearsonCorrelation`], [`FisherZ`], [`PearsonEquivalence`]) cover the
-//! partial-correlation path.
+//! [`CressieRead`], [`FreemanTukey`], [`ModifiedLikelihood`]) differ only in
+//! their `λ` and are declared together by one macro; three
+//! continuous tests ([`PearsonCorrelation`], [`FisherZ`],
+//! [`PearsonEquivalence`]) share the partial-correlation path.
 
 mod discrete_common;
+mod fisher_z;
+mod pearson_correlation;
+mod pearson_equivalence;
+mod power_divergence;
 
-pub mod chi_squared;
-pub mod cressie_read;
-pub mod fisher_z;
-pub mod freeman_tukey;
-pub mod log_likelihood;
-pub mod modified_likelihood;
-pub mod pearson_correlation;
-pub mod pearson_equivalence;
-
-pub use chi_squared::ChiSquared;
-pub use cressie_read::CressieRead;
 pub use fisher_z::FisherZ;
-pub use freeman_tukey::FreemanTukey;
-pub use log_likelihood::LogLikelihood;
-pub use modified_likelihood::ModifiedLikelihood;
 pub use pearson_correlation::PearsonCorrelation;
 pub use pearson_equivalence::PearsonEquivalence;
+pub use power_divergence::{
+    ChiSquared, CressieRead, FreemanTukey, LogLikelihood, ModifiedLikelihood,
+};
