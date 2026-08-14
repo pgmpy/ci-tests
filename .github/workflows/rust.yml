@@ -6,29 +6,29 @@ name: Rust CI
 # package availability) may still need tweaks.
 #
 # The workspace is no longer built/tested as a single step: the binding crates
-# (ci_python / cir / ci_js) each need their own non-cargo toolchain (maturin,
+# (citest / citest-r / citest-js) each need their own non-cargo toolchain (maturin,
 # rextendr/R, wasm-pack) and are covered by python.yml / r.yml / js.yml. This
-# workflow builds and gates only the pure-Rust core crate (ci_core), whose tests
+# workflow builds and gates only the pure-Rust core crate (citest), whose tests
 # include the 80-case shared golden parity fixture.
 
 on:
   push:
     branches: [master, development]
     paths:
-      - 'crates/ci-core/**'
-      - 'crates/ci-python/**'
-      - 'crates/ci-r/**'
-      - 'crates/ci-js/**'
+      - 'crates/citest/**'
+      - 'crates/citest-python/**'
+      - 'crates/citest-r/**'
+      - 'crates/citest-js/**'
       - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/rust.yml'
   pull_request:
     paths:
-      - 'crates/ci-core/**'
-      - 'crates/ci-python/**'
-      - 'crates/ci-r/**'
-      - 'crates/ci-js/**'
+      - 'crates/citest/**'
+      - 'crates/citest-python/**'
+      - 'crates/citest-r/**'
+      - 'crates/citest-js/**'
       - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -61,7 +61,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   clippy:
-    name: Rust Clippy Lints (ci_core)
+    name: Rust Clippy Lints (citest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -73,14 +73,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # Verified locally: `cargo clippy -p ci_core --all-targets -- -D warnings`.
-      # Scoped to ci_core so this job needs no Python/R/wasm toolchain; the
+      # Verified locally: `cargo clippy -p citest --all-targets -- -D warnings`.
+      # Scoped to citest so this job needs no Python/R/wasm toolchain; the
       # binding crates are linted by their own workflows.
       - name: Run Clippy
-        run: cargo clippy -p ci_core --all-targets -- -D warnings
+        run: cargo clippy -p citest --all-targets -- -D warnings
 
   rust_test:
-    name: Rust Tests (ci_core)
+    name: Rust Tests (citest)
     needs: [rust_fmt, clippy]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -98,4 +98,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test -p ci_core --verbose
+        run: cargo test -p citest --verbose

@@ -1,0 +1,14 @@
+{
+  "name": "citest-js-dev",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "eslint": "10.8.1",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "vitest": "^4.1.7"
+  },
+  "private": true
+}

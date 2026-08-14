@@ -1,0 +1,21 @@
+[package]
+name = "citest-python"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ankur Ankan <ankurankan@gmail.com>"]
+license = "MIT"
+description = "PyO3 bindings for Conditional Independence Testing"
+repository = "https://github.com/pgmpy/ci-tests"
+publish = false
+
+[dependencies]
+citest = { path = "../citest" }
+numpy = { version = "0.24" }
+pyo3 = { version = "0.24", features = ["extension-module", "abi3-py310"] }
+
+[lints]
+workspace = true
+
+[lib]
+name = "citest_python"
+crate-type = ["cdylib", "rlib"]

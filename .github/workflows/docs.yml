@@ -4,10 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/ci-core/**"
-      - "crates/ci-js/**"
-      - "crates/ci-python/**"
-      - "crates/ci-r/**"
+      - "crates/citest/**"
+      - "crates/citest-js/**"
+      - "crates/citest-python/**"
+      - "crates/citest-r/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -34,7 +34,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build Rust docs
-        run: cargo doc --no-deps -p ci_core
+        run: cargo doc --no-deps -p citest
 
       - name: Upload Rust docs
         uses: actions/upload-artifact@v4
@@ -57,16 +57,16 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          working-directory: crates/ci-r
+          working-directory: crates/citest-r
           extra-packages: any::devtools, any::rextendr, any::pkgdown
 
       - name: Generate R wrappers
-        working-directory: crates/ci-r
+        working-directory: crates/citest-r
         run: rextendr::document()
         shell: Rscript {0}
 
       - name: Build pkgdown site
-        working-directory: crates/ci-r
+        working-directory: crates/citest-r
         run: pkgdown::build_site(new_process = FALSE)
         shell: Rscript {0}
 
@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: r-docs
-          path: crates/ci-r/docs/
+          path: crates/citest-r/docs/
 
   build-js-docs:
     name: Build JavaScript Docs
@@ -89,7 +89,7 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Build WASM package
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: wasm-pack build --target nodejs --out-dir pkg
 
       - uses: actions/setup-node@v4
@@ -100,14 +100,14 @@ jobs:
         run: npm install -g typedoc typescript
 
       - name: Build JavaScript docs
-        working-directory: crates/ci-js
-        run: typedoc --entryPoints pkg/ci_js.d.ts --skipErrorChecking --out js-docs
+        working-directory: crates/citest-js
+        run: typedoc --entryPoints pkg/citest_js.d.ts --skipErrorChecking --out js-docs
 
       - name: Upload JavaScript docs
         uses: actions/upload-artifact@v4
         with:
           name: js-docs
-          path: crates/ci-js/js-docs/
+          path: crates/citest-js/js-docs/
 
   build-python-docs:
     name: Build Python Docs
@@ -123,22 +123,22 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        working-directory: crates/ci-python
+        working-directory: crates/citest-python
         run: pip install maturin numpy pdoc
 
       - name: Build and install Python package
-        working-directory: crates/ci-python
+        working-directory: crates/citest-python
         run: pip install -e . --no-build-isolation
 
       - name: Build Python docs
-        working-directory: crates/ci-python
-        run: pdoc ci_python -o python-docs
+        working-directory: crates/citest-python
+        run: pdoc citest -o python-docs
 
       - name: Upload Python docs
         uses: actions/upload-artifact@v4
         with:
           name: python-docs
-          path: crates/ci-python/python-docs/
+          path: crates/citest-python/python-docs/
 
   deploy:
     name: Deploy to GitHub Pages
@@ -230,25 +230,25 @@ jobs:
               <h1>Conditional Independence Testing</h1>
               <p class="subtitle">Fast CI tests for causal discovery with Rust, R, Python, and JavaScript bindings.</p>
               <div class="cards">
-                <a class="card" href="rust/ci_core/index.html">
+                <a class="card" href="rust/citest/index.html">
                   <span class="card-icon"></span>
                   <span class="card-title">Rust API</span>
-                  <span class="card-desc">ci-core library docs</span>
+                  <span class="card-desc">citest library docs</span>
                 </a>
                 <a class="card" href="r/index.html">
                   <span class="card-icon"></span>
                   <span class="card-title">R Package</span>
-                  <span class="card-desc">cir package reference</span>
+                  <span class="card-desc">citest package reference</span>
                 </a>
-                <a class="card" href="python/ci_python.html">
+                <a class="card" href="python/citest.html">
                   <span class="card-icon"></span>
                   <span class="card-title">Python API</span>
-                  <span class="card-desc">ci-python module docs</span>
+                  <span class="card-desc">citest module docs</span>
                 </a>
                 <a class="card" href="js/index.html">
                   <span class="card-icon"></span>
                   <span class="card-title">JavaScript API</span>
-                  <span class="card-desc">ci-js WASM bindings</span>
+                  <span class="card-desc">citest WASM bindings</span>
                 </a>
               </div>
               <footer>Generated by GitHub Actions</footer>

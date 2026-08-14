@@ -228,5 +228,9 @@ todo.txt
 
 # R: generated at install time by tools/config.R via configure; never track
 # (a stale tracked copy can silently force a debug build).
-crates/ci-r/src/Makevars
-crates/ci-r/src/Makevars.win
+crates/citest-r/src/Makevars
+crates/citest-r/src/Makevars.win
+
+# R build artefacts under the renamed package
+crates/citest-r/src/*.so
+crates/citest-r/src/*.o

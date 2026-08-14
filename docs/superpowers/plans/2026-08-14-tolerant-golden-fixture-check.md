@@ -172,7 +172,7 @@ Run:
 ```bash
 ruff format --check .
 ruff check .
-python crates/ci-r/tools/sync_package_assets.py --check
+python crates/citest-r/tools/sync_package_assets.py --check
 git diff --check
 ```
 

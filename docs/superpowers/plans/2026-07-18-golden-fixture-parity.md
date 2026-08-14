@@ -12,7 +12,7 @@
 
 - Preserve the existing public Rust, Python, R, and JavaScript APIs.
 - Emit exactly 80 cases: 12 for each of five discrete tests, 7 Pearson correlation, 6 Pearson equivalence, and 7 Fisher-Z.
-- Compute reference values without importing `ci_core` or any binding.
+- Compute reference values without importing `citest` or any binding.
 - Keep every JSON number finite; error, NaN, and infinity behavior stays in unit tests.
 - Give every case a unique lowercase kebab-case `id` and report it in binding failures.
 - Canonicalize computed floats to 12 significant digits and serialize strict JSON with sorted keys, two-space indentation, and a trailing newline.
@@ -29,11 +29,11 @@
 - `tests/fixtures/test_generate_golden.py`: focused tests for the generator contract, determinism, strict serialization, and drift behavior.
 - `tests/fixtures/requirements.txt`: exact NumPy/SciPy oracle versions.
 - `tests/fixtures/golden.json`: generated 80-case cross-language contract.
-- `crates/ci-core/tests/golden.rs`: Rust consumer; deserialize and report stable IDs.
-- `crates/ci-python/test/test_golden.py`: Python consumer; report IDs and assert effect size.
-- `crates/ci-js/tests/golden.test.js`: JavaScript consumer; report IDs and assert effect size.
-- `crates/ci-r/tests/testthat/test-golden.R`: R consumer; report IDs and assert effect size.
-- `crates/ci-r/DESCRIPTION`: declare `jsonlite` as a test dependency.
+- `crates/citest/tests/golden.rs`: Rust consumer; deserialize and report stable IDs.
+- `crates/citest-python/test/test_golden.py`: Python consumer; report IDs and assert effect size.
+- `crates/citest-js/tests/golden.test.js`: JavaScript consumer; report IDs and assert effect size.
+- `crates/citest-r/tests/testthat/test-golden.R`: R consumer; report IDs and assert effect size.
+- `crates/citest-r/DESCRIPTION`: declare `jsonlite` as a test dependency.
 - `.github/workflows/python.yml`: add the platform-independent fixture drift job and correct case counts.
 - `.github/workflows/{rust,r,js}.yml`: correct stale case-count comments.
 - `README.md`, `CONTRIBUTING.md`: document generation/checking and remove the nonexistent benchmark-tree entry.
@@ -1073,7 +1073,7 @@ git commit -m "test: add reproducible golden parity fixture"
 
 **Files:**
 
-- Modify: `crates/ci-core/tests/golden.rs:48-62,139-163,165-210`
+- Modify: `crates/citest/tests/golden.rs:48-62,139-163,165-210`
 
 **Interfaces:**
 
@@ -1093,7 +1093,7 @@ assert!(!case.id.is_empty(), "fixture cases must have a stable id");
 Run:
 
 ```bash
-cargo test -p ci_core --test golden
+cargo test -p citest --test golden
 ```
 
 Expected: FAIL with `no field 'id' on type '&Case'`. This proves the consumer does not yet deserialize the new contract field.
@@ -1159,8 +1159,8 @@ fn assert_field(name: &str, case: &Case, expected: Option<f64>, actual: Option<f
 Run:
 
 ```bash
-cargo test -p ci_core --test golden -- --nocapture
-cargo test -p ci_core
+cargo test -p citest --test golden -- --nocapture
+cargo test -p citest
 ```
 
 Expected: the target reports all 80 cases across eight tests and passes; the complete core suite passes with no missing-file error.
@@ -1168,7 +1168,7 @@ Expected: the target reports all 80 cases across eight tests and passes; the com
 - [ ] **Step 5: Commit the Rust consumer update**
 
 ```bash
-git add crates/ci-core/tests/golden.rs
+git add crates/citest/tests/golden.rs
 git commit -m "test(core): report golden fixture case ids"
 ```
 
@@ -1178,7 +1178,7 @@ git commit -m "test(core): report golden fixture case ids"
 
 **Files:**
 
-- Modify: `crates/ci-python/test/test_golden.py:1-10,96-130`
+- Modify: `crates/citest-python/test/test_golden.py:1-10,96-130`
 
 **Interfaces:**
 
@@ -1231,8 +1231,8 @@ Run:
 
 ```bash
 python -m pip install maturin pytest numpy mypy
-python -m pip install -e crates/ci-python --no-build-isolation
-pytest crates/ci-python/test/test_golden.py -v
+python -m pip install -e crates/citest-python --no-build-isolation
+pytest crates/citest-python/test/test_golden.py -v
 ```
 
 Expected: 81 tests pass: 80 named fixture cases plus the coverage/count test.
@@ -1242,8 +1242,8 @@ Expected: 81 tests pass: 80 named fixture cases plus the coverage/count test.
 Run:
 
 ```bash
-pytest crates/ci-python/test/
-cd crates/ci-python
+pytest crates/citest-python/test/
+cd crates/citest-python
 mypy test/
 ```
 
@@ -1252,7 +1252,7 @@ Expected: all Python tests and mypy checks pass.
 - [ ] **Step 4: Commit the Python contract check**
 
 ```bash
-git add crates/ci-python/test/test_golden.py
+git add crates/citest-python/test/test_golden.py
 git commit -m "test(python): assert golden effect sizes"
 ```
 
@@ -1262,7 +1262,7 @@ git commit -m "test(python): assert golden effect sizes"
 
 **Files:**
 
-- Modify: `crates/ci-js/tests/golden.test.js:1-10,109-154`
+- Modify: `crates/citest-js/tests/golden.test.js:1-10,109-154`
 
 **Interfaces:**
 
@@ -1299,8 +1299,8 @@ After the existing dof assertion, add:
 Run:
 
 ```bash
-wasm-pack build crates/ci-js --target nodejs
-cd crates/ci-js/tests
+wasm-pack build crates/citest-js --target nodejs
+cd crates/citest-js/tests
 npm ci
 npm test
 ```
@@ -1312,7 +1312,7 @@ Expected: Vitest passes all API tests plus 80 golden cases and the golden covera
 Run:
 
 ```bash
-cd crates/ci-js
+cd crates/citest-js
 npm ci
 npx prettier --check .
 npx eslint .
@@ -1323,7 +1323,7 @@ Expected: all checks pass without rewriting files.
 - [ ] **Step 4: Commit the JavaScript contract check**
 
 ```bash
-git add crates/ci-js/tests/golden.test.js
+git add crates/citest-js/tests/golden.test.js
 git commit -m "test(js): assert golden effect sizes"
 ```
 
@@ -1333,8 +1333,8 @@ git commit -m "test(js): assert golden effect sizes"
 
 **Files:**
 
-- Modify: `crates/ci-r/tests/testthat/test-golden.R:1-10,115-151`
-- Modify: `crates/ci-r/DESCRIPTION:15-19`
+- Modify: `crates/citest-r/tests/testthat/test-golden.R:1-10,115-151`
+- Modify: `crates/citest-r/DESCRIPTION:15-19`
 
 **Interfaces:**
 
@@ -1343,7 +1343,7 @@ git commit -m "test(js): assert golden effect sizes"
 
 - [ ] **Step 1: Declare the JSON fixture reader**
 
-Change `Suggests` in `crates/ci-r/DESCRIPTION` to:
+Change `Suggests` in `crates/citest-r/DESCRIPTION` to:
 
 ```text
 Suggests:
@@ -1387,8 +1387,8 @@ After the existing dof assertion, add:
 Run from the repository root:
 
 ```bash
-Rscript -e 'rextendr::document("crates/ci-r")'
-Rscript -e 'devtools::test("crates/ci-r", reporter = "summary")'
+Rscript -e 'rextendr::document("crates/citest-r")'
+Rscript -e 'devtools::test("crates/citest-r", reporter = "summary")'
 ```
 
 Expected: testthat passes the package suite, including the count assertion and all 80 four-field cases.
@@ -1398,8 +1398,8 @@ Expected: testthat passes the package suite, including the count assertion and a
 Run:
 
 ```bash
-Rscript -e 'devtools::check("crates/ci-r", error_on = "warning")'
-Rscript -e 'lintr::lint_package("crates/ci-r")'
+Rscript -e 'devtools::check("crates/citest-r", error_on = "warning")'
+Rscript -e 'lintr::lint_package("crates/citest-r")'
 ```
 
 Expected: `R CMD check` recognizes `jsonlite` as declared and lintr returns no lints.
@@ -1407,7 +1407,7 @@ Expected: `R CMD check` recognizes `jsonlite` as declared and lintr returns no l
 - [ ] **Step 5: Commit the R contract check**
 
 ```bash
-git add crates/ci-r/DESCRIPTION crates/ci-r/tests/testthat/test-golden.R
+git add crates/citest-r/DESCRIPTION crates/citest-r/tests/testthat/test-golden.R
 git commit -m "test(r): assert golden effect sizes"
 ```
 
@@ -1463,11 +1463,11 @@ Change the Python binding job dependency to:
 Update both Python workflow comments from 73 to 80 cases:
 
 ```yaml
-      # (crates/ci-python/test/test_golden.py) reproduces all 80 fixture cases.
+      # (crates/citest-python/test/test_golden.py) reproduces all 80 fixture cases.
 ```
 
 ```yaml
-      # Verified locally: `pytest crates/ci-python/test/` -> golden = 80/80.
+      # Verified locally: `pytest crates/citest-python/test/` -> golden = 80/80.
 ```
 
 - [ ] **Step 2: Correct Rust and JavaScript workflow counts**
@@ -1479,7 +1479,7 @@ In `.github/workflows/rust.yml`, replace both 73-case comments with 80-case word
 ```
 
 ```yaml
-      # Verified locally: `cargo test -p ci_core` (includes the 80-case golden
+      # Verified locally: `cargo test -p citest` (includes the 80-case golden
 ```
 
 In `.github/workflows/js.yml`, use:
@@ -1613,8 +1613,8 @@ Run:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ci_core --all-targets -- -D warnings
-cargo test -p ci_core
+cargo clippy -p citest --all-targets -- -D warnings
+cargo test -p citest
 ```
 
 Expected: all three commands exit zero; the golden integration target exercises 80 cases.
@@ -1624,10 +1624,10 @@ Expected: all three commands exit zero; the golden integration target exercises 
 Run:
 
 ```bash
-ruff format --check tests/fixtures crates/ci-python
-ruff check tests/fixtures crates/ci-python
-mypy crates/ci-python/test/
-pytest crates/ci-python/test/
+ruff format --check tests/fixtures crates/citest-python
+ruff check tests/fixtures crates/citest-python
+mypy crates/citest-python/test/
+pytest crates/citest-python/test/
 ```
 
 Expected: all commands exit zero and the Python golden module exercises 80 cases plus its count check.
@@ -1637,11 +1637,11 @@ Expected: all commands exit zero and the Python golden module exercises 80 cases
 Run:
 
 ```bash
-wasm-pack build crates/ci-js --target nodejs
-npm --prefix crates/ci-js/tests ci
-npm --prefix crates/ci-js/tests test
-Rscript -e 'rextendr::document("crates/ci-r")'
-Rscript -e 'devtools::test("crates/ci-r", reporter = "summary")'
+wasm-pack build crates/citest-js --target nodejs
+npm --prefix crates/citest-js/tests ci
+npm --prefix crates/citest-js/tests test
+Rscript -e 'rextendr::document("crates/citest-r")'
+Rscript -e 'devtools::test("crates/citest-r", reporter = "summary")'
 ```
 
 Expected: both binding suites pass their API tests and all 80 fixture cases. If `wasm-pack` or R is unavailable, record the exact `command not found` evidence and rely on the corresponding CI workflow; do not claim that suite was run locally.

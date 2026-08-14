@@ -13,11 +13,11 @@ R source-package self-containment guarantee.
 - Configure the workspace `statrs` dependency with `default-features = false`.
   The package uses univariate distribution CDFs only and does not use the
   default `nalgebra` or `rand` integrations.
-- Remove both direct `getrandom` dependencies from `ci-js`. Once `statrs` no
+- Remove both direct `getrandom` dependencies from `citest`. Once `statrs` no
   longer enables `rand`, neither direct feature-unification dependency is
   needed by the WASM binding.
 - Apply the same workspace dependency setting to the standalone R Rust
-  workspace, synchronize its packaged `ci-core`, regenerate both Cargo
+  workspace, synchronize its packaged `citest`, regenerate both Cargo
   lockfiles, and rebuild the R vendor archive from the resulting locked crate
   set.
 - Preserve the existing versions of `statrs`, `thiserror`, and all binding
@@ -25,10 +25,10 @@ R source-package self-containment guarantee.
 
 ### 2. One JavaScript npm project
 
-- Keep `crates/ci-js/package.json` and its lockfile as the only npm project.
-- Delete `crates/ci-js/tests/package.json` and
-  `crates/ci-js/tests/package-lock.json`.
-- Run Vitest from `crates/ci-js`; test discovery must continue to execute both
+- Keep `crates/citest-js/package.json` and its lockfile as the only npm project.
+- Delete `crates/citest-js/tests/package.json` and
+  `crates/citest-js/tests/package-lock.json`.
+- Run Vitest from `crates/citest-js`; test discovery must continue to execute both
   `tests/api.test.js` and `tests/golden.test.js` in the Node environment.
 - Update both existing JavaScript CI jobs to install from the root lockfile:
   the lint job performs formatting and ESLint checks, while each OS test job
@@ -39,8 +39,8 @@ R source-package self-containment guarantee.
 
 - Remove the three OpenBLAS installation steps from documentation jobs. No
   current package or documentation build links to system OpenBLAS.
-- Remove the explicit `cargo build -p ci_core` step immediately before
-  `cargo test -p ci_core`; Cargo test already builds the same targets.
+- Remove the explicit `cargo build -p citest` step immediately before
+  `cargo test -p citest`; Cargo test already builds the same targets.
 - Preserve workflow triggers, path filters, concurrency groups, job names, OS
   coverage, and required-check identities.
 
@@ -72,7 +72,7 @@ R source-package self-containment guarantee.
 
 - The canonical fixture `tests/fixtures/golden.json` and its packaged R copy
   must remain byte-identical and unchanged.
-- `crates/ci-r/src/rust/ci-core/**`, the package-local fixture, Cargo lockfile,
+- `crates/citest-r/src/rust/citest/**`, the package-local fixture, Cargo lockfile,
   and vendor archive remain present because the R source archive must build
   outside the monorepo and without network access.
 - Generated extendr wrappers and `.Rd` files are not hand-edited.

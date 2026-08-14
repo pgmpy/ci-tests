@@ -9,7 +9,7 @@ conditioning variables $Z$ — written $X \perp Y \mid Z$. CI tests are a fundam
 block of constraint-based causal discovery and of structure learning for probabilistic
 graphical models.
 
-Every test is implemented once in a dependency-light **Rust core** (`ci-core`) and exposed
+Every test is implemented once in a dependency-light **Rust core** (`citest`) and exposed
 through thin, idiomatic bindings for **Python, R, and JavaScript/WebAssembly**. 
 
 ## Quick Start
@@ -29,12 +29,12 @@ Build and install the package from the repository root:
 
 ```bash
 pip install maturin
-maturin develop -m crates/ci-python/Cargo.toml
+maturin develop -m crates/citest-python/Cargo.toml
 ```
 
 ```python
 import numpy as np, pandas as pd
-from ci_python import Dataset, ChiSquared, FisherZ, PearsonEquivalence
+from citest import Dataset, ChiSquared, FisherZ, PearsonEquivalence
 
 rng = np.random.default_rng(0)
 df = pd.DataFrame({
@@ -67,17 +67,17 @@ eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)   # -> bool (indepe
 
 ### R
 
-Install the package from the repository root (the R package is named `cir`):
+Install the package from the repository root (the R package is named `citest`):
 
 ```r
 # install.packages("devtools")
-devtools::install("crates/ci-r")
+devtools::install("crates/citest-r")
 ```
 
 A `fisher_z(data)` factory accompanies the factories below, mirroring the Python/JS `FisherZ`.
 
 ```r
-library(cir)
+library(citest)
 
 set.seed(0)
 df <- data.frame(
@@ -110,11 +110,11 @@ conditioning names. A factory accepts either a pre-built `dataset()` or a raw `d
 ### JavaScript
 
 Build the WebAssembly package with [wasm-pack](https://rustwasm.github.io/wasm-pack/); the
-output is written to `crates/ci-js/pkg`:
+output is written to `crates/citest-js/pkg`:
 
 ```bash
-wasm-pack build crates/ci-js --target web      # for browsers
-wasm-pack build crates/ci-js --target nodejs   # for Node.js
+wasm-pack build crates/citest-js --target web      # for browsers
+wasm-pack build crates/citest-js --target nodejs   # for Node.js
 ```
 
 There are no dtypes in JS, so each column carries its `kind`. You can pass columns directly
@@ -123,7 +123,7 @@ a shared `Dataset` first — `new ChiSquared(data)` — so the arrays cross the 
 only once and can be reused across multiple tests:
 
 ```js
-import init, { Dataset, ChiSquared, FisherZ, PearsonEquivalence } from "./pkg/ci_js.js";
+import init, { Dataset, ChiSquared, FisherZ, PearsonEquivalence } from "./pkg/citest_js.js";
 
 await init(); // load the WebAssembly module (web target)
 
@@ -194,29 +194,29 @@ eqv.isIndependent("X", "Y", ["Z"], 0.05);            // -> boolean (p < alpha)
 ## Package Structure & Contributing
 
 ```
-crates/ci-core     Rust core: all test implementations, the CITest trait, the Dataset, and the registry
-crates/ci-python   Python bindings (PyO3)        -> import ci_python
-crates/ci-r        R package (extendr)           -> library(cir)
-crates/ci-js       JavaScript / WASM (wasm-pack)
+crates/citest     Rust core: all test implementations, the CITest trait, the Dataset, and the registry
+crates/citest-python   Python bindings (PyO3)        -> import citest
+crates/citest-r        R package (extendr)           -> library(citest)
+crates/citest-js       JavaScript / WASM (wasm-pack)
 ```
 
-All three bindings are thin wrappers that depend only on `ci-core`, so the statistics live in a
+All three bindings are thin wrappers that depend only on `citest`, so the statistics live in a
 single place; each binding maps its idiomatic input (a pandas/`data.frame`/typed columns) onto
 the core `Dataset` and forwards `run_test` / `is_independent`. The Rust core can also be used
 directly as a crate. A shared golden fixture (`tests/fixtures/golden.json`) is the canonical
 cross-language numeric parity gate. The R source package carries mechanically synchronized
-copies of that fixture and `ci-core` so its built archive can be checked outside the monorepo;
-`python crates/ci-r/tools/sync_package_assets.py --check` rejects drift. Full API documentation
+copies of that fixture and `citest` so its built archive can be checked outside the monorepo;
+`python crates/citest-r/tools/sync_package_assets.py --check` rejects drift. Full API documentation
 is published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup,
 coding standards, and how to add a new test. Each crate uses its own toolchain, so checks run
-per crate rather than across the whole workspace. For a change to `ci-core`, before opening a PR:
+per crate rather than across the whole workspace. For a change to `citest`, before opening a PR:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ci_core --all-targets -- -D warnings
-cargo test -p ci_core          # includes the shared golden parity test
+cargo clippy -p citest --all-targets -- -D warnings
+cargo test -p citest          # includes the shared golden parity test
 ```
 
 ## License

@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <body>
+    <pre id="result"></pre>
+    <script type="module">
+      import init, { Dataset, PearsonCorrelation } from "../pkg/citest_js.js";
+
+      await init();
+
+      try {
+        const data = new Dataset({
+          X: { kind: "continuous", values: [0.2, 0.8, 1.4, 2.1, 2.7] },
+          Y: { kind: "continuous", values: [1.0, 1.7, 2.5, 3.0, 3.8] },
+        });
+        const result = new PearsonCorrelation(data).runTest("X", "Y", []);
+        document.getElementById("result").textContent = JSON.stringify(
+          result,
+          null,
+          2,
+        );
+      } catch (e) {
+        document.getElementById("result").textContent = `Error: ${e}`;
+      }
+    </script>
+  </body>
+</html>

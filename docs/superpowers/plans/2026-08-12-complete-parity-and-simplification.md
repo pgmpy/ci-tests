@@ -12,7 +12,7 @@
 
 - Preserve the existing public Rust, Python, R, and JavaScript APIs.
 - Preserve the two pre-existing uncommitted edits in `docs/superpowers/plans/2026-07-18-golden-fixture-parity.md` and `docs/superpowers/specs/2026-07-18-golden-fixture-parity-design.md`; do not stage or rewrite them.
-- Keep the independent fixture generator free of imports from pgmpy, `ci_core`, and every binding.
+- Keep the independent fixture generator free of imports from pgmpy, `citest`, and every binding.
 - Emit exactly 80 finite successful cases with the distribution in the approved golden-fixture design.
 - Compare every result field, including asserting that JSON null maps to an absent/`None`/`NULL`/`null` binding field.
 - Keep pgmpy out of build, runtime, normal test, and fixture-generation dependencies.
@@ -126,11 +126,11 @@ git commit -m "test: add reproducible golden parity fixture"
 
 **Files:**
 
-- Modify: `crates/ci-core/tests/golden.rs`
-- Modify: `crates/ci-python/test/test_golden.py`
-- Modify: `crates/ci-js/tests/golden.test.js`
-- Modify: `crates/ci-r/tests/testthat/test-golden.R`
-- Modify: `crates/ci-r/DESCRIPTION`
+- Modify: `crates/citest/tests/golden.rs`
+- Modify: `crates/citest-python/test/test_golden.py`
+- Modify: `crates/citest-js/tests/golden.test.js`
+- Modify: `crates/citest-r/tests/testthat/test-golden.R`
+- Modify: `crates/citest-r/DESCRIPTION`
 
 **Interfaces:**
 
@@ -169,7 +169,7 @@ Add `assert!(!case.id.is_empty())` before executing each case and use `case.id` 
 Run after adding the ID assertion but before adding `Case.id`:
 
 ```bash
-cargo test -p ci_core --test golden
+cargo test -p citest --test golden
 ```
 
 Expected: compilation fails because `Case` has no `id` field. Complete the deserialization and assertion changes, then rerun and expect all 80 cases to pass.
@@ -217,16 +217,16 @@ Suggests:
 Run:
 
 ```bash
-cargo test -p ci_core --test golden -- --nocapture
-python -m pytest tests/fixtures/test_generate_golden.py crates/ci-python/test/test_golden.py -v
+cargo test -p citest --test golden -- --nocapture
+python -m pytest tests/fixtures/test_generate_golden.py crates/citest-python/test/test_golden.py -v
 ```
 
-The Python binding must be installed first with `python -m pip install -e crates/ci-python --no-build-isolation`. Run JavaScript and R consumers in Task 6 after their toolchains/configuration are repaired.
+The Python binding must be installed first with `python -m pip install -e crates/citest-python --no-build-isolation`. Run JavaScript and R consumers in Task 6 after their toolchains/configuration are repaired.
 
 - [ ] **Step 6: Commit consumer completion**
 
 ```bash
-git add crates/ci-core/tests/golden.rs crates/ci-python/test/test_golden.py crates/ci-js/tests/golden.test.js crates/ci-r/tests/testthat/test-golden.R crates/ci-r/DESCRIPTION
+git add crates/citest/tests/golden.rs crates/citest-python/test/test_golden.py crates/citest-js/tests/golden.test.js crates/citest-r/tests/testthat/test-golden.R crates/citest-r/DESCRIPTION
 git commit -m "test: enforce complete golden result contract"
 ```
 
@@ -389,12 +389,12 @@ git commit -m "test: compare golden cases with current pgmpy"
 
 **Files:**
 
-- Modify: `crates/ci-python/pyproject.toml`
-- Modify: `crates/ci-python/ci_python/__init__.py`
-- Modify: `crates/ci-python/test/test_api.py`
-- Modify: `crates/ci-python/test/test_golden.py`
+- Modify: `crates/citest-python/pyproject.toml`
+- Modify: `crates/citest-python/citest/__init__.py`
+- Modify: `crates/citest-python/test/test_api.py`
+- Modify: `crates/citest-python/test/test_golden.py`
 - Modify: `.github/workflows/python.yml`
-- Modify: `crates/ci-python/README.md`
+- Modify: `crates/citest-python/README.md`
 
 **Interfaces:**
 
@@ -406,9 +406,9 @@ git commit -m "test: compare golden cases with current pgmpy"
 Run:
 
 ```bash
-ruff format --check crates/ci-python
-ruff check crates/ci-python
-mypy crates/ci-python/test
+ruff format --check crates/citest-python
+ruff check crates/citest-python
+mypy crates/citest-python/test
 ```
 
 Expected: formatting/lint failures and missing pandas typing evidence as recorded in the branch audit.
@@ -439,17 +439,17 @@ Add targeted Ruff ignores for test-only docstrings and dynamic JSON values inste
 "test/**" = ["ANN401", "D103"]
 ```
 
-Move `numpy` to module scope in `ci_python/__init__.py`; keep pandas lazy, with `# noqa: PLC0415` on the intentional optional import. Correct `_safe_issubdtype` to a valid multi-line docstring.
+Move `numpy` to module scope in `citest/__init__.py`; keep pandas lazy, with `# noqa: PLC0415` on the intentional optional import. Correct `_safe_issubdtype` to a valid multi-line docstring.
 
 - [ ] **Step 3: Apply and verify Ruff fixes**
 
 Run:
 
 ```bash
-ruff check --fix crates/ci-python
-ruff format crates/ci-python
-ruff format --check crates/ci-python
-ruff check crates/ci-python
+ruff check --fix crates/citest-python
+ruff format crates/citest-python
+ruff format --check crates/citest-python
+ruff check crates/citest-python
 ```
 
 Review the diff and retain only behavior-preserving edits.
@@ -468,16 +468,16 @@ Change all 73-case comments to 80.
 
 - [ ] **Step 5: Correct Python examples and degrees of freedom**
 
-In `crates/ci-python/README.md`, include `FisherZ` in the test table, make every discrete query condition only on discrete columns, make every continuous query use continuous `X`, `Y`, and `Z`, and state that `PearsonCorrelation` reports `n - |Z| - 2` while Fisher-Z/equivalence report `None`.
+In `crates/citest-python/README.md`, include `FisherZ` in the test table, make every discrete query condition only on discrete columns, make every continuous query use continuous `X`, `Y`, and `Z`, and state that `PearsonCorrelation` reports `n - |Z| - 2` while Fisher-Z/equivalence report `None`.
 
 - [ ] **Step 6: Verify Python completely**
 
 Run:
 
 ```bash
-python -m pip install -e "crates/ci-python[test]" --no-build-isolation
-mypy crates/ci-python/test
-pytest crates/ci-python/test -v
+python -m pip install -e "crates/citest-python[test]" --no-build-isolation
+mypy crates/citest-python/test
+pytest crates/citest-python/test -v
 ```
 
 Expected: MyPy and all API plus 80 golden cases pass.
@@ -485,7 +485,7 @@ Expected: MyPy and all API plus 80 golden cases pass.
 - [ ] **Step 7: Commit Python repairs**
 
 ```bash
-git add crates/ci-python/pyproject.toml crates/ci-python/ci_python/__init__.py crates/ci-python/test/test_api.py crates/ci-python/test/test_golden.py crates/ci-python/README.md .github/workflows/python.yml
+git add crates/citest-python/pyproject.toml crates/citest-python/citest/__init__.py crates/citest-python/test/test_api.py crates/citest-python/test/test_golden.py crates/citest-python/README.md .github/workflows/python.yml
 git commit -m "ci(python): restore lint type and parity gates"
 ```
 
@@ -495,16 +495,16 @@ git commit -m "ci(python): restore lint type and parity gates"
 
 **Files:**
 
-- Modify: `crates/ci-js/package.json`
-- Modify: `crates/ci-js/package-lock.json`
-- Modify: `crates/ci-js/eslint.config.mjs`
-- Modify: `crates/ci-js/tests/api.test.js`
-- Modify: `crates/ci-js/tests/golden.test.js`
+- Modify: `crates/citest-js/package.json`
+- Modify: `crates/citest-js/package-lock.json`
+- Modify: `crates/citest-js/eslint.config.mjs`
+- Modify: `crates/citest-js/tests/api.test.js`
+- Modify: `crates/citest-js/tests/golden.test.js`
 - Modify: `.github/workflows/js.yml`
 - Modify: `.github/workflows/r.yml`
-- Modify: `crates/ci-r/R/cir.R`
-- Modify: `crates/ci-r/tests/testthat/test-golden.R`
-- Create: `crates/ci-r/.lintr`
+- Modify: `crates/citest-r/R/cir.R`
+- Modify: `crates/citest-r/tests/testthat/test-golden.R`
+- Create: `crates/citest-r/.lintr`
 
 **Interfaces:**
 
@@ -513,7 +513,7 @@ git commit -m "ci(python): restore lint type and parity gates"
 
 - [ ] **Step 1: Add and pin JS quality tooling**
 
-Run from `crates/ci-js`:
+Run from `crates/citest-js`:
 
 ```bash
 npm install --save-dev --save-exact eslint prettier
@@ -571,7 +571,7 @@ Keep `lintr::lint_package()` so `.lintr` controls the same exclusion locally and
 
 - [ ] **Step 4: Apply R formatting to handwritten files**
 
-When R is available, run from `crates/ci-r`:
+When R is available, run from `crates/citest-r`:
 
 ```bash
 Rscript -e 'files <- setdiff(list.files("R", pattern="[.]R$", full.names=TRUE), "R/extendr-wrappers.R"); styler::style_file(files, include_roxygen_examples=FALSE)'
@@ -583,7 +583,7 @@ Do not manually simplify `R/extendr-wrappers.R`.
 - [ ] **Step 5: Commit quality-gate repairs**
 
 ```bash
-git add crates/ci-js/package.json crates/ci-js/package-lock.json crates/ci-js/eslint.config.mjs crates/ci-js/tests/api.test.js crates/ci-js/tests/golden.test.js .github/workflows/js.yml .github/workflows/r.yml crates/ci-r/R/cir.R crates/ci-r/tests/testthat/test-golden.R crates/ci-r/.lintr
+git add crates/citest-js/package.json crates/citest-js/package-lock.json crates/citest-js/eslint.config.mjs crates/citest-js/tests/api.test.js crates/citest-js/tests/golden.test.js .github/workflows/js.yml .github/workflows/r.yml crates/citest-r/R/cir.R crates/citest-r/tests/testthat/test-golden.R crates/citest-r/.lintr
 git commit -m "ci: restore JavaScript and R quality gates"
 ```
 
@@ -596,7 +596,7 @@ git commit -m "ci: restore JavaScript and R quality gates"
 - Modify: `README.md`
 - Modify: `CONTRIBUTING.md`
 - Modify: `Cargo.toml`
-- Modify: `crates/ci-core/Cargo.toml`
+- Modify: `crates/citest/Cargo.toml`
 - Modify: `Cargo.lock`
 
 **Interfaces:**
@@ -629,11 +629,11 @@ Expected: only workspace/core manifest declarations remain for `criterion`, `pro
 
 - [ ] **Step 3: Remove unused dependencies**
 
-Remove those unused workspace dependencies and the corresponding `ci-core` dev-dependencies. Run:
+Remove those unused workspace dependencies and the corresponding `citest` dev-dependencies. Run:
 
 ```bash
-cargo check -p ci_core -p ci_python -p ci_js
-cargo test -p ci_core --lib
+cargo check -p citest -p citest -p citest_js
+cargo test -p citest --lib
 ```
 
 Expected: Cargo refreshes `Cargo.lock`; builds and unit tests pass.
@@ -652,7 +652,7 @@ Expected: no matches and no whitespace errors.
 - [ ] **Step 5: Commit documentation and dependency cleanup**
 
 ```bash
-git add README.md CONTRIBUTING.md Cargo.toml crates/ci-core/Cargo.toml Cargo.lock
+git add README.md CONTRIBUTING.md Cargo.toml crates/citest/Cargo.toml Cargo.lock
 git commit -m "docs: document parity workflow and trim dependencies"
 ```
 
@@ -672,8 +672,8 @@ git commit -m "docs: document parity workflow and trim dependencies"
 - [ ] **Step 1: Run Rust and Python**
 
 ```bash
-cargo test -p ci_core
-pytest tests/fixtures crates/ci-python/test -v
+cargo test -p citest
+pytest tests/fixtures crates/citest-python/test -v
 python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /home/ankur/work/pgmpy/pgmpy
 ```
 
@@ -681,20 +681,20 @@ python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /home/ankur/work/pgmp
 
 ```bash
 rustup target add wasm32-unknown-unknown
-wasm-pack build crates/ci-js --target nodejs
-npm --prefix crates/ci-js/tests ci
-npm --prefix crates/ci-js/tests test
-npm --prefix crates/ci-js ci
-npm --prefix crates/ci-js exec prettier -- --check .
-npm --prefix crates/ci-js exec eslint -- .
+wasm-pack build crates/citest-js --target nodejs
+npm --prefix crates/citest-js/tests ci
+npm --prefix crates/citest-js/tests test
+npm --prefix crates/citest-js ci
+npm --prefix crates/citest-js exec prettier -- --check .
+npm --prefix crates/citest-js exec eslint -- .
 ```
 
 - [ ] **Step 3: Run R**
 
 ```bash
-Rscript -e 'rextendr::document("crates/ci-r")'
-Rscript -e 'devtools::test("crates/ci-r", reporter="summary")'
-Rscript -e 'devtools::check("crates/ci-r", args="--no-manual", error_on="warning")'
+Rscript -e 'rextendr::document("crates/citest-r")'
+Rscript -e 'devtools::test("crates/citest-r", reporter="summary")'
+Rscript -e 'devtools::check("crates/citest-r", args="--no-manual", error_on="warning")'
 ```
 
 - [ ] **Step 4: Handle any real failure with TDD**
@@ -729,30 +729,30 @@ Skip this step if no implementation defect is found.
 ```bash
 git status --short
 sha256sum tests/fixtures/golden.json
-cargo test -p ci_core --quiet
+cargo test -p citest --quiet
 python tests/fixtures/check_pgmpy_parity.py --pgmpy-source /home/ankur/work/pgmpy/pgmpy
 ```
 
 - [ ] **Step 2: Run Rust simplification**
 
 ```bash
-cargo clippy --fix -p ci_core --all-targets --allow-dirty --allow-staged -- -D warnings
+cargo clippy --fix -p citest --all-targets --allow-dirty --allow-staged -- -D warnings
 cargo fmt --all
 ```
 
 - [ ] **Step 3: Run Python and JavaScript simplification**
 
 ```bash
-ruff check --fix crates/ci-python tests/fixtures
-ruff format crates/ci-python tests/fixtures
-npm --prefix crates/ci-js exec prettier -- --write .
-npm --prefix crates/ci-js exec eslint -- . --fix
+ruff check --fix crates/citest-python tests/fixtures
+ruff format crates/citest-python tests/fixtures
+npm --prefix crates/citest-js exec prettier -- --write .
+npm --prefix crates/citest-js exec eslint -- . --fix
 ```
 
 - [ ] **Step 4: Run R simplification on handwritten code**
 
 ```bash
-Rscript -e 'files <- setdiff(list.files("crates/ci-r/R", pattern="[.]R$", full.names=TRUE), "crates/ci-r/R/extendr-wrappers.R"); styler::style_file(files, include_roxygen_examples=FALSE)'
+Rscript -e 'files <- setdiff(list.files("crates/citest-r/R", pattern="[.]R$", full.names=TRUE), "crates/citest-r/R/extendr-wrappers.R"); styler::style_file(files, include_roxygen_examples=FALSE)'
 ```
 
 - [ ] **Step 5: Review every automatic edit**
@@ -770,9 +770,9 @@ Run the exact Task 7 commands again, plus:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ci_core --all-targets -- -D warnings
-ruff format --check crates/ci-python tests/fixtures
-ruff check crates/ci-python tests/fixtures
+cargo clippy -p citest --all-targets -- -D warnings
+ruff format --check crates/citest-python tests/fixtures
+ruff check crates/citest-python tests/fixtures
 python tests/fixtures/generate_golden.py --check
 sha256sum tests/fixtures/golden.json
 git diff --check

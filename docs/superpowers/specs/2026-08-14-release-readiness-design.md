@@ -30,12 +30,12 @@ All four suites pass before any change, so every later failure is attributable:
 
 | Suite | Result |
 |---|---|
-| `cargo test -p ci_core` | 60 unit + 1 golden (80 cases) + 1 doctest, all pass |
-| `pytest crates/ci-python/test` | 111 pass |
-| `devtools::test("crates/ci-r")` | api + golden, all pass |
+| `cargo test -p citest` | 60 unit + 1 golden (80 cases) + 1 doctest, all pass |
+| `pytest crates/citest-python/test` | 111 pass |
+| `devtools::test("crates/citest-r")` | api + golden, all pass |
 | `wasm-pack build` + `npm test` | 103 pass (2 files) |
 
-`rextendr::document("crates/ci-r")` produces no git diff against the committed
+`rextendr::document("crates/citest-r")` produces no git diff against the committed
 tree, confirming the checked-in generated files are in sync with their sources.
 
 ## Decisions
@@ -65,7 +65,7 @@ These were settled with the maintainer before this document was written.
 
 ## Naming
 
-`cir` is occupied on CRAN by an unrelated package at version 2.5.1, and `ci-js`
+`cir` is occupied on CRAN by an unrelated package at version 2.5.1, and `citest`
 is occupied on npm. `citest` was verified free on crates.io, PyPI, npm and CRAN.
 It is also valid under the strictest of the four naming rules (CRAN: letters and
 digits only, must begin with a letter).
@@ -152,9 +152,9 @@ Measured contents of the artifacts as they build today:
 | Artifact | Ships now | Ship tests? |
 |---|---|---|
 | crates.io | `tests/golden.rs`, without its fixture | No |
-| PyPI sdist | Rust *and* Python tests, no fixture, plus `crates/ci-python/.vscode/settings.json` | No |
-| PyPI wheel | no tests, but `ci_python/__pycache__/__init__.cpython-314.pyc` | No |
-| npm | `ci_js_bg.wasm`, `ci_js.js`, `ci_js.d.ts` | No — already correct |
+| PyPI sdist | Rust *and* Python tests, no fixture, plus `crates/citest-python/.vscode/settings.json` | No |
+| PyPI wheel | no tests, but `citest/__pycache__/__init__.cpython-314.pyc` | No |
+| npm | `ci_js_bg.wasm`, `citest_js.js`, `citest_js.d.ts` | No — already correct |
 | CRAN | `tests/testthat/**` plus its own fixture copy | **Yes — by design** |
 
 Actions:
@@ -278,7 +278,7 @@ reading each vendored crate's manifest:
 provided `inst/AUTHORS` documents the bundle; that is exactly what `gifski`
 does while vendoring non-MIT crates.
 
-**A11.3 — Prune never-compiled crates from the bundle.** `ci-core` declares
+**A11.3 — Prune never-compiled crates from the bundle.** `citest` declares
 `serde` and `serde_json` as `[dev-dependencies]` for `tests/golden.rs`. The
 vendored copy contains no tests — sync copies only `Cargo.toml`, `README.md` and
 `src/**` — so seven crates (`serde`, `serde_core`, `serde_derive`,
@@ -310,7 +310,7 @@ maintenance script to users.
 
 ### A12. Documentation truth-up
 
-- CONTRIBUTING's instruction to run JS tests "from `crates/ci-js/tests`"
+- CONTRIBUTING's instruction to run JS tests "from `crates/citest-js/tests`"
   describes a directory removed by an earlier consolidation.
 - CONTRIBUTING references `docs/api-examples.md`, which does not exist.
 - No README documents installing from a registry; every path is

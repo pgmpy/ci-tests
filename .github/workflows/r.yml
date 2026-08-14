@@ -15,16 +15,16 @@ on:
   push:
     branches: [master, development]
     paths:
-      - 'crates/ci-r/**'
-      - 'crates/ci-core/**'
+      - 'crates/citest-r/**'
+      - 'crates/citest/**'
       - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/r.yml'
   pull_request:
     paths:
-      - 'crates/ci-r/**'
-      - 'crates/ci-core/**'
+      - 'crates/citest-r/**'
+      - 'crates/citest/**'
       - 'tests/fixtures/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -55,14 +55,14 @@ jobs:
         shell: Rscript {0}
 
       - name: Check R formatting
-        working-directory: crates/ci-r
+        working-directory: crates/citest-r
         run: |
           files <- setdiff(list.files("R", pattern = "[.]R$", full.names = TRUE), "R/extendr-wrappers.R")
           styler::style_file(files, dry = "fail", include_roxygen_examples = FALSE)
         shell: Rscript {0}
 
       - name: Lint R code
-        working-directory: crates/ci-r
+        working-directory: crates/citest-r
         run: |
           lints <- lintr::lint_package()
           print(lints)
@@ -96,28 +96,28 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Check packaged source and fixture drift
-        run: python crates/ci-r/tools/sync_package_assets.py --check
+        run: python crates/citest-r/tools/sync_package_assets.py --check
 
       # jsonlite is declared in Suggests for the golden suite; install it
       # alongside devtools/rextendr/testthat.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          working-directory: crates/ci-r
+          working-directory: crates/citest-r
           extra-packages: any::devtools, any::rextendr, any::testthat, any::jsonlite
 
       - name: Generate Makevars and R wrappers
-        run: rextendr::document("crates/ci-r")
+        run: rextendr::document("crates/citest-r")
         shell: Rscript {0}
 
       - name: Run R tests
-        run: devtools::test("crates/ci-r", reporter = "summary")
+        run: devtools::test("crates/citest-r", reporter = "summary")
         shell: Rscript {0}
 
       - name: Build and check source package
         run: |
           archive <- devtools::build(
-            "crates/ci-r",
+            "crates/citest-r",
             path = tempdir(),
             manual = FALSE,
             vignettes = FALSE

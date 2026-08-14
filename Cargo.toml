@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/ci-core",
-    "crates/ci-python",
-    "crates/ci-js",
+    "crates/citest",
+    "crates/citest-python",
+    "crates/citest-js",
 ]
 resolver = "2"
 

@@ -13,8 +13,8 @@ cases. A later change added Fisher-Z to every consumer and increased the
 contract to 80 cases, again without adding the seven Fisher-Z rows or the
 original 73-row artifact.
 
-Consequently, `cargo test -p ci_core` runs all core unit tests successfully and
-then fails when `crates/ci-core/tests/golden.rs` tries to open
+Consequently, `cargo test -p citest` runs all core unit tests successfully and
+then fails when `crates/citest/tests/golden.rs` tries to open
 `tests/fixtures/golden.json`. The other three binding suites fail at the same
 boundary. This is a missing source-of-truth pipeline, rather than a statistical
 failure in one binding.
@@ -46,7 +46,7 @@ failure in one binding.
 
 A Python generator owns deterministic input scenarios and evaluates them with
 NumPy/SciPy implementations of the documented pgmpy formulas. It never imports
-or invokes `ci_core` or a language binding. The generated JSON is committed so
+or invokes `citest` or a language binding. The generated JSON is committed so
 normal Rust, R, and JavaScript tests do not require Python or SciPy.
 
 This keeps the oracle independent, lightweight, inspectable, and usable by all
@@ -60,7 +60,7 @@ this project's unified contract, and this project additionally exposes Yates
 as an option. Direct generation would therefore still require adapter formulas
 while making regeneration more fragile.
 
-### 3. Generate through `ci_core`
+### 3. Generate through `citest`
 
 This is the simplest implementation, but it is circular: the expected values
 would be produced by the implementation being tested. It could detect binding
@@ -301,7 +301,7 @@ commands and fixture consumers are still updated and statically inspected.
   missing or modified fixture without changing it.
 - The fixture contains exactly 80 valid, uniquely identified cases with the
   specified per-test distribution.
-- `cargo test -p ci_core` passes, including all 80 golden cases.
+- `cargo test -p citest` passes, including all 80 golden cases.
 - Every available binding suite passes and compares all four result fields.
 - CI detects generator/fixture drift independently from binding builds.
 - No workflow or contributor documentation still claims 73 cases or a present

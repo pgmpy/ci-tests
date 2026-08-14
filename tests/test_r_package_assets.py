@@ -6,7 +6,7 @@ from types import ModuleType
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SYNC_TOOL = REPO_ROOT / "crates" / "ci-r" / "tools" / "sync_package_assets.py"
+SYNC_TOOL = REPO_ROOT / "crates" / "citest-r" / "tools" / "sync_package_assets.py"
 
 
 def load_sync_tool() -> ModuleType:
@@ -29,14 +29,14 @@ def test_drift_check_reports_modified_and_unexpected_assets(tmp_path: Path) -> N
     sync_tool.sync_assets(repo)
 
     fixture = (
-        repo / "crates" / "ci-r" / "tests" / "testthat" / "fixtures" / "golden.json"
+        repo / "crates" / "citest-r" / "tests" / "testthat" / "fixtures" / "golden.json"
     )
     fixture.write_text("modified\n", encoding="utf-8")
-    stale = repo / "crates" / "ci-r" / "src" / "rust" / "ci-core" / "src" / "stale.rs"
+    stale = repo / "crates" / "citest-r" / "src" / "rust" / "citest" / "src" / "stale.rs"
     stale.write_text("// stale\n", encoding="utf-8")
 
     errors = sync_tool.find_drift(repo)
     assert errors == [
-        "modified packaged asset: crates/ci-r/tests/testthat/fixtures/golden.json",
-        "unexpected packaged asset: crates/ci-r/src/rust/ci-core/src/stale.rs",
+        "modified packaged asset: crates/citest-r/tests/testthat/fixtures/golden.json",
+        "unexpected packaged asset: crates/citest-r/src/rust/citest/src/stale.rs",
     ]

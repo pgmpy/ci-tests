@@ -5,9 +5,9 @@ name: JS CI
 # workflow runs there, so the exact runner setup may still need tweaks.
 #
 # Build: a *real* wasm-pack (installed via jetli/wasm-pack-action) plus the
-# wasm32-unknown-unknown target build the package into crates/ci-js/pkg, which
-# the vitest suite imports as ../pkg/ci_js.js. `wasm-opt` is disabled via the
-# crate's package metadata (crates/ci-js/Cargo.toml) because the locally
+# wasm32-unknown-unknown target build the package into crates/citest-js/pkg, which
+# the vitest suite imports as ../pkg/citest_js.js. `wasm-opt` is disabled via the
+# crate's package metadata (crates/citest-js/Cargo.toml) because the locally
 # installed wasm-opt is too old to parse the modern wasm the core emits; it only
 # shrinks the binary, so disabling it does not affect correctness. CI may
 # re-enable it once a newer wasm-opt is guaranteed on the runner.
@@ -19,16 +19,16 @@ on:
   push:
     branches: [master, development]
     paths:
-      - "crates/ci-js/**"
-      - "crates/ci-core/**"
+      - "crates/citest-js/**"
+      - "crates/citest/**"
       - "tests/fixtures/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/js.yml"
   pull_request:
     paths:
-      - "crates/ci-js/**"
-      - "crates/ci-core/**"
+      - "crates/citest-js/**"
+      - "crates/citest/**"
       - "tests/fixtures/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -54,18 +54,18 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-          cache-dependency-path: crates/ci-js/package-lock.json
+          cache-dependency-path: crates/citest-js/package-lock.json
 
       - name: Install dependencies
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: npm ci
 
       - name: Check formatting
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: npx prettier --check .
 
       - name: Run ESLint
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: npx eslint .
 
   js-test:
@@ -83,7 +83,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-          cache-dependency-path: crates/ci-js/package-lock.json
+          cache-dependency-path: crates/citest-js/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -98,18 +98,18 @@ jobs:
         with:
           version: v0.15.0
 
-      # Verified locally: builds into crates/ci-js/pkg (wasm-opt disabled via the
-      # crate's package metadata). The vitest suite imports ../pkg/ci_js.js.
+      # Verified locally: builds into crates/citest-js/pkg (wasm-opt disabled via the
+      # crate's package metadata). The vitest suite imports ../pkg/citest_js.js.
       - name: Build WASM package
-        run: wasm-pack build crates/ci-js --target nodejs
+        run: wasm-pack build crates/citest-js --target nodejs
 
-      # Verified locally: `npm ci && npm test` in crates/ci-js runs the root
+      # Verified locally: `npm ci && npm test` in crates/citest-js runs the root
       # script, which discovers tests/*.test.js; the golden suite covers all 80
       # fixture cases.
       - name: Install dependencies
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: npm ci
 
       - name: Run tests
-        working-directory: crates/ci-js
+        working-directory: crates/citest-js
         run: npm test
