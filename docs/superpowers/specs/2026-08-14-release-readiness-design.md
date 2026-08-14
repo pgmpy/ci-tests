@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-14
 
-**Status:** Approved for implementation (Stage A); Stages B–D specified, not scheduled
+**Status:** Stage A implemented (see git history from `1db5d30`); Stages B–D specified, not scheduled
 
 ## Context
 
