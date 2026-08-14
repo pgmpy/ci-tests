@@ -56,9 +56,12 @@ These were settled with the maintainer before this document was written.
    the public Rust API byte-identical.
 7. **Sequencing.** Stage A implemented now; B, C and D specified here and
    scheduled separately.
-8. **CRAN is a required target for 0.1.0.** Its blockers are therefore Stage A
-   work (A11), not later cleanup, and CRAN review latency gates the release of
-   all four packages.
+8. **CRAN is a required target, but does not gate the other three.** Its
+   blockers are Stage A work (A11), not later cleanup. CRAN review latency is
+   outside our control, so crates.io, PyPI and npm publish at `0.1.0` as soon as
+   they are ready and CRAN follows when it clears — the R package may trail by a
+   patch version. Versions are asserted equal *within* a release, not across
+   registries at a single instant.
 
 ## Naming
 
