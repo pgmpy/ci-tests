@@ -23,6 +23,17 @@ build-backend = "maturin"
 [tool.maturin]
 module-name = "ci_python._ci_python"
 python-source = "."
+# Consumers install the library to use it, not to run its development suite.
+# The golden fixture lives at the repository root and is deliberately not
+# shipped, so any test that reached a published artifact could not run anyway.
+exclude = [
+  "test/**/*",
+  ".vscode/**/*",
+  "**/__pycache__/**/*",
+  ".mypy_cache/**/*",
+  ".pytest_cache/**/*",
+  ".ruff_cache/**/*",
+]
 
 [project.optional-dependencies]
 test = [
