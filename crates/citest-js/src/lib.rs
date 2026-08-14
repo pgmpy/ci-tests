@@ -62,6 +62,22 @@ export type ColumnsObject = Record<string, ColumnSpec>;
 export type DataInput = Dataset | ColumnsObject;
 export interface DiscreteOptions { yates?: boolean; }
 export interface EquivalenceOptions { deltaThreshold?: number; }
+export interface CiResult {
+  /** The test statistic, or null for tests that define none. */
+  statistic: number | null;
+  pValue: number;
+  /** Degrees of freedom, or null for tests that define none. */
+  dof: number | null;
+  /** Cramer's V for the discrete tests, |rho| for the continuous ones. */
+  effectSize: number | null;
+}
+export interface TestMeta {
+  name: string;
+  dataTypes: ColumnKind[];
+  symmetric: boolean;
+  /** "p_value_ge" for the usual tests; "p_value_lt" for equivalence (TOST). */
+  rule: "p_value_ge" | "p_value_lt";
+}
 "#;
 
 /// Install the panic hook so Rust panics surface as readable JS errors. Called
@@ -262,6 +278,38 @@ fn coerce_dataset(value: &JsValue) -> Result<Rc<CoreDataset>, JsValue> {
     Ok(Rc::new(dataset_from_value(value)?))
 }
 
+/// Normalize the `z` argument: omitted (`undefined`) means the empty
+/// conditioning set, matching the Python and R bindings, which both default it.
+///
+/// wasm-bindgen turns a bare `string` into a one-element `Vec<String>` by
+/// iterating its characters, so `runTest("A", "B", "Zc")` used to look up a
+/// column called `"Z"`. Only single-character column names made that work by
+/// accident, which is precisely the shape of a toy example. Reject it and say
+/// what to write instead.
+fn conditioning_set(z: Option<JsValue>) -> Result<Vec<String>, JsValue> {
+    let Some(z) = z.filter(|v| !v.is_undefined() && !v.is_null()) else {
+        return Ok(Vec::new());
+    };
+    if let Some(name) = z.as_string() {
+        return Err(js_error(&format!(
+            "z must be an array of column names, not a bare string; \
+             write [{name:?}] instead of {name:?}"
+        )));
+    }
+    let Some(array) = z.dyn_ref::<js_sys::Array>() else {
+        return Err(js_error("z must be an array of column names"));
+    };
+    array
+        .iter()
+        .enumerate()
+        .map(|(i, value)| {
+            value
+                .as_string()
+                .ok_or_else(|| js_error(&format!("z[{i}] must be a column name string")))
+        })
+        .collect()
+}
+
 /// Resolve a single column reference (a name `string`) to a validated column
 /// index within `data`.
 fn resolve_column(data: &CoreDataset, name: &str) -> Result<usize, JsValue> {
@@ -414,7 +462,14 @@ macro_rules! ci_test_class {
             /// `{ statistic, pValue, dof, effectSize }` (`null` for absent
             /// fields). `x`/`y` are column names; `z` is an array of names.
             #[wasm_bindgen(js_name = runTest)]
-            pub fn run_test(&self, x: &str, y: &str, z: Vec<String>) -> Result<JsValue, JsValue> {
+            #[wasm_bindgen(unchecked_return_type = "CiResult")]
+            pub fn run_test(
+                &self,
+                x: &str,
+                y: &str,
+                #[wasm_bindgen(unchecked_param_type = "string[] | undefined")] z: Option<JsValue>,
+            ) -> Result<JsValue, JsValue> {
+                let z = conditioning_set(z)?;
                 let (xi, yi, zi) = resolve_xyz(&self.data, x, y, &z)?;
                 self.inner
                     .test(&self.data, xi, yi, &zi)
@@ -430,10 +485,11 @@ macro_rules! ci_test_class {
                 &self,
                 x: &str,
                 y: &str,
-                z: Vec<String>,
+                #[wasm_bindgen(unchecked_param_type = "string[] | undefined")] z: Option<JsValue>,
                 significance_level: Option<f64>,
             ) -> Result<bool, JsValue> {
                 let significance_level = significance_level.unwrap_or(0.05);
+                let z = conditioning_set(z)?;
                 let (xi, yi, zi) = resolve_xyz(&self.data, x, y, &z)?;
                 self.inner
                     .is_independent(&self.data, xi, yi, &zi, significance_level)
@@ -441,7 +497,7 @@ macro_rules! ci_test_class {
             }
 
             /// Static metadata: `{ name, dataTypes, symmetric, rule }`.
-            #[wasm_bindgen]
+            #[wasm_bindgen(unchecked_return_type = "TestMeta")]
             #[must_use]
             pub fn meta(&self) -> JsValue {
                 meta_to_js(&self.inner.meta())

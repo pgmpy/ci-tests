@@ -217,3 +217,39 @@ test_that("invalid queries error", {
   expect_error(run_test(chi, "A", "B", c("A")), "invalid query")
   expect_error(run_test(chi, "A", "B", c("C", "C")), "invalid query")
 })
+
+test_that("meta() reports each test's own decision rule", {
+  df <- data.frame(
+    A = sample(0:1, 40, TRUE),
+    B = sample(0:1, 40, TRUE),
+    X = rnorm(40),
+    Y = rnorm(40)
+  )
+  ds <- dataset(df)
+
+  m <- meta(chi_squared(ds))
+  expect_equal(m$name, "chi_squared")
+  expect_equal(m$data_types, "discrete")
+  expect_true(m$symmetric)
+  expect_equal(m$rule, "p_value_ge")
+
+  expect_equal(meta(fisher_z(ds))$data_types, "continuous")
+  # The one test with the inverted convention must say so itself.
+  expect_equal(meta(pearson_equivalence(ds))$rule, "p_value_lt")
+})
+
+test_that("as_pcalg() refuses inverted-rule tests by asking their metadata", {
+  df <- data.frame(X = rnorm(60), Y = rnorm(60), Z = rnorm(60))
+  ds <- dataset(df)
+
+  expect_true(is.function(as_pcalg(fisher_z(ds))))
+  expect_error(as_pcalg(pearson_equivalence(ds)), "inverted decision rule")
+
+  # The guard reads the rule rather than matching a hardcoded name, so a test
+  # whose rule is p_value_lt is refused whatever it is called. Standing in for
+  # a future ninth test, which would otherwise silently invert every pcalg edge
+  # decision until someone remembered to update a literal.
+  disguised <- pearson_equivalence(ds)
+  disguised$name <- "some_future_equivalence_test"
+  expect_error(as_pcalg(disguised), "inverted decision rule")
+})

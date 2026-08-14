@@ -221,9 +221,7 @@ fn extract_values(kind: ColumnKind, obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>
             }
             Ok(codes)
         }
-        ColumnKind::Continuous => Err(CiError::new_err(
-            "continuous column values must be numeric",
-        )),
+        ColumnKind::Continuous => Err(CiError::new_err("continuous column values must be numeric")),
     }
 }
 

@@ -31,7 +31,7 @@ use extendr_api::Result;
 
 mod util;
 
-use util::{result_to_list, to_r_error};
+use util::{meta_to_list, result_to_list, to_r_error};
 
 /// A named, typed, immutable table of columns shared by the test handles.
 ///
@@ -207,6 +207,11 @@ macro_rules! ci_test_handle {
             /// vector), returning `list(statistic, p_value, dof, effect_size)`.
             fn run_test(&self, x: &str, y: &str, z: Strings) -> Result<Robj> {
                 run_inner(&self.inner, &self.data, x, y, &z)
+            }
+
+            /// Static metadata: `list(name, data_types, symmetric, rule)`.
+            fn meta(&self) -> Robj {
+                meta_to_list(&self.inner.meta())
             }
 
             /// Decide independence at `significance_level` using the test's rule.

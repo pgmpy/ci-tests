@@ -299,3 +299,37 @@ describe("isIndependent", () => {
     expect(() => chi.isIndependent("A", "B", [], -Infinity)).toThrow(/finite/);
   });
 });
+
+describe("conditioning-set argument", () => {
+  const data = () =>
+    new Dataset({
+      A: { kind: "discrete", values: [0, 1, 0, 1, 0, 1, 0, 1] },
+      B: { kind: "discrete", values: [1, 1, 0, 0, 1, 1, 0, 0] },
+      Zc: { kind: "discrete", values: [0, 0, 0, 0, 1, 1, 1, 1] },
+    });
+
+  test("treats an omitted z as the empty set, like the Python and R bindings", () => {
+    const chi = new ChiSquared(data());
+    expect(chi.runTest("A", "B")).toEqual(chi.runTest("A", "B", []));
+    expect(chi.isIndependent("A", "B")).toBe(chi.isIndependent("A", "B", []));
+  });
+
+  test("rejects a bare string instead of silently splitting it", () => {
+    // wasm-bindgen turns a string into a character array, so "Zc" used to look
+    // up a column named "Z". Only single-character names hid the bug.
+    const chi = new ChiSquared(data());
+    expect(() => chi.runTest("A", "B", "Zc")).toThrow(/not a bare string/);
+    expect(() => chi.runTest("A", "B", "Zc")).toThrow(/\["Zc"\]/);
+  });
+
+  test("rejects non-string entries with their index", () => {
+    const chi = new ChiSquared(data());
+    expect(() => chi.runTest("A", "B", [1])).toThrow(/z\[0\]/);
+  });
+
+  test("conditions on a named column", () => {
+    const chi = new ChiSquared(data());
+    expect(chi.runTest("A", "B", ["Zc"]).dof).toBe(2);
+    expect(chi.runTest("A", "B", []).dof).toBe(1);
+  });
+});

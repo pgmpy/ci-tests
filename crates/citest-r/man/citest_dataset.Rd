@@ -11,8 +11,8 @@ dataset(df)
 \item{df}{A data.frame (or object coercible to one).}
 }
 \value{
-An object of class \code{citest_dataset} wrapping the bound dataset and its
-column names.
+An object of class \code{citest_dataset} wrapping the bound dataset
+and its column names.
 }
 \description{
 Builds the data-bound dataset shared by the test factories. Column kinds are

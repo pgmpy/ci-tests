@@ -66,6 +66,10 @@ Dataset$index_of <- function(name) .Call(wrap__Dataset__index_of, self, name)
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -75,6 +79,8 @@ ChiSquared <- new.env(parent = emptyenv())
 ChiSquared$new <- function(data, yates) .Call(wrap__ChiSquared__new, data, yates)
 
 ChiSquared$run_test <- function(x, y, z) .Call(wrap__ChiSquared__run_test, self, x, y, z)
+
+ChiSquared$meta <- function() .Call(wrap__ChiSquared__meta, self)
 
 ChiSquared$is_independent <- function(x, y, z, significance_level) .Call(wrap__ChiSquared__is_independent, self, x, y, z, significance_level)
 
@@ -99,6 +105,10 @@ ChiSquared$is_independent <- function(x, y, z, significance_level) .Call(wrap__C
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -108,6 +118,8 @@ LogLikelihood <- new.env(parent = emptyenv())
 LogLikelihood$new <- function(data, yates) .Call(wrap__LogLikelihood__new, data, yates)
 
 LogLikelihood$run_test <- function(x, y, z) .Call(wrap__LogLikelihood__run_test, self, x, y, z)
+
+LogLikelihood$meta <- function() .Call(wrap__LogLikelihood__meta, self)
 
 LogLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap__LogLikelihood__is_independent, self, x, y, z, significance_level)
 
@@ -132,6 +144,10 @@ LogLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -141,6 +157,8 @@ CressieRead <- new.env(parent = emptyenv())
 CressieRead$new <- function(data, yates) .Call(wrap__CressieRead__new, data, yates)
 
 CressieRead$run_test <- function(x, y, z) .Call(wrap__CressieRead__run_test, self, x, y, z)
+
+CressieRead$meta <- function() .Call(wrap__CressieRead__meta, self)
 
 CressieRead$is_independent <- function(x, y, z, significance_level) .Call(wrap__CressieRead__is_independent, self, x, y, z, significance_level)
 
@@ -165,6 +183,10 @@ CressieRead$is_independent <- function(x, y, z, significance_level) .Call(wrap__
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -174,6 +196,8 @@ FreemanTukey <- new.env(parent = emptyenv())
 FreemanTukey$new <- function(data, yates) .Call(wrap__FreemanTukey__new, data, yates)
 
 FreemanTukey$run_test <- function(x, y, z) .Call(wrap__FreemanTukey__run_test, self, x, y, z)
+
+FreemanTukey$meta <- function() .Call(wrap__FreemanTukey__meta, self)
 
 FreemanTukey$is_independent <- function(x, y, z, significance_level) .Call(wrap__FreemanTukey__is_independent, self, x, y, z, significance_level)
 
@@ -198,6 +222,10 @@ FreemanTukey$is_independent <- function(x, y, z, significance_level) .Call(wrap_
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -207,6 +235,8 @@ ModifiedLikelihood <- new.env(parent = emptyenv())
 ModifiedLikelihood$new <- function(data, yates) .Call(wrap__ModifiedLikelihood__new, data, yates)
 
 ModifiedLikelihood$run_test <- function(x, y, z) .Call(wrap__ModifiedLikelihood__run_test, self, x, y, z)
+
+ModifiedLikelihood$meta <- function() .Call(wrap__ModifiedLikelihood__meta, self)
 
 ModifiedLikelihood$is_independent <- function(x, y, z, significance_level) .Call(wrap__ModifiedLikelihood__is_independent, self, x, y, z, significance_level)
 
@@ -231,6 +261,10 @@ ModifiedLikelihood$is_independent <- function(x, y, z, significance_level) .Call
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -240,6 +274,8 @@ PearsonCorrelation <- new.env(parent = emptyenv())
 PearsonCorrelation$new <- function(data) .Call(wrap__PearsonCorrelation__new, data)
 
 PearsonCorrelation$run_test <- function(x, y, z) .Call(wrap__PearsonCorrelation__run_test, self, x, y, z)
+
+PearsonCorrelation$meta <- function() .Call(wrap__PearsonCorrelation__meta, self)
 
 PearsonCorrelation$is_independent <- function(x, y, z, significance_level) .Call(wrap__PearsonCorrelation__is_independent, self, x, y, z, significance_level)
 
@@ -264,6 +300,10 @@ PearsonCorrelation$is_independent <- function(x, y, z, significance_level) .Call
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -273,6 +313,8 @@ FisherZ <- new.env(parent = emptyenv())
 FisherZ$new <- function(data) .Call(wrap__FisherZ__new, data)
 
 FisherZ$run_test <- function(x, y, z) .Call(wrap__FisherZ__run_test, self, x, y, z)
+
+FisherZ$meta <- function() .Call(wrap__FisherZ__meta, self)
 
 FisherZ$is_independent <- function(x, y, z, significance_level) .Call(wrap__FisherZ__is_independent, self, x, y, z, significance_level)
 
@@ -297,6 +339,10 @@ FisherZ$is_independent <- function(x, y, z, significance_level) .Call(wrap__Fish
 #'vector), returning `list(statistic, p_value, dof, effect_size)`.
 #'}
 #'
+#'\subsection{Method `meta`}{
+#'Static metadata: `list(name, data_types, symmetric, rule)`.
+#'}
+#'
 #'\subsection{Method `is_independent`}{
 #'Decide independence at `significance_level` using the test's rule.
 #'}
@@ -306,6 +352,8 @@ PearsonEquivalence <- new.env(parent = emptyenv())
 PearsonEquivalence$new <- function(data, delta_threshold) .Call(wrap__PearsonEquivalence__new, data, delta_threshold)
 
 PearsonEquivalence$run_test <- function(x, y, z) .Call(wrap__PearsonEquivalence__run_test, self, x, y, z)
+
+PearsonEquivalence$meta <- function() .Call(wrap__PearsonEquivalence__meta, self)
 
 PearsonEquivalence$is_independent <- function(x, y, z, significance_level) .Call(wrap__PearsonEquivalence__is_independent, self, x, y, z, significance_level)
 

@@ -79,8 +79,8 @@
 #' `na.omit(df)`) before binding.
 #'
 #' @param df A data.frame (or object coercible to one).
-#' @return An object of class `citest_dataset` wrapping the bound dataset and its
-#'   column names.
+#' @return An object of class `citest_dataset` wrapping the bound dataset
+#'   and its column names.
 #' @examples
 #' df <- data.frame(A = sample(0:1, 50, TRUE), X = rnorm(50))
 #' data <- dataset(df)
@@ -141,7 +141,8 @@ print.citest_dataset <- function(x, ...) {
 #' Build a `citest_test` wrapper around a constructed extendr test handle.
 #'
 #' @param handle The external-pointer test handle from `<Class>$new(...)`.
-#' @param ds The bound `citest_dataset` (carries column names for pcalg mapping).
+#' @param ds The bound `citest_dataset` (carries column names for pcalg
+#'   mapping).
 #' @param name The test's stable name (e.g. `"chi_squared"`).
 #' @return An object of class `citest_test`.
 #' @noRd
@@ -333,6 +334,28 @@ is_independent <- function(
   test$handle$is_independent(x, y, .citest_as_names(z), significance_level)
 }
 
+#' Static metadata describing a test.
+#'
+#' Returns the test's own description of itself, so callers can ask how a
+#' p-value should be interpreted rather than hardcoding which tests use which
+#' convention.
+#'
+#' @param test A `citest_test` from one of the factory functions.
+#' @return A named list with `name` (the stable identifier), `data_types`
+#'   (`"discrete"` and/or `"continuous"`), `symmetric` (whether swapping `x`
+#'   and `y` leaves the result unchanged), and `rule`: `"p_value_ge"` for the
+#'   standard null-of-independence tests, `"p_value_lt"` for equivalence
+#'   (TOST) tests, which declare independence when the p-value is **below**
+#'   the significance level.
+#' @examples
+#' df <- data.frame(A = sample(0:1, 20, TRUE), B = sample(0:1, 20, TRUE))
+#' meta(chi_squared(dataset(df)))$rule
+#' @export
+meta <- function(test) {
+  stopifnot(inherits(test, "citest_test"))
+  test$handle$meta()
+}
+
 #' Normalize a conditioning-set argument to a character vector.
 #'
 #' Accepts `NULL`, a character vector, or a single name; never a non-character.
@@ -353,12 +376,6 @@ is_independent <- function(
 # ---------------------------------------------------------------------------
 # pcalg adapter
 # ---------------------------------------------------------------------------
-
-# Test names whose decision rule is inverted relative to pcalg's standard
-# convention: they declare independence when p < alpha, not p >= alpha. Mirrors
-# the core `IndependenceRule::PValueLt` tests. Keep in sync if another
-# inverted-rule test is added to the factories above.
-.citest_inverted_rule_tests <- c("pearson_equivalence")
 
 #' Adapt a `citest_test` into a \pkg{pcalg} `indepTest` callback.
 #'
@@ -391,7 +408,10 @@ as_pcalg <- function(test) {
   # inverted -- independence when p < alpha, i.e. the core's
   # `IndependenceRule::PValueLt` -- would have every decision silently flipped,
   # yielding a wrong skeleton/CPDAG with no error. Refuse them.
-  if (test$name %in% .citest_inverted_rule_tests) {
+  # Ask the test for its own rule rather than consulting a hardcoded list: a
+  # new inverted-rule test is then refused automatically, instead of silently
+  # inverting every edge decision until someone remembers to update a literal.
+  if (!identical(meta(test)$rule, "p_value_ge")) {
     stop(sprintf(
       paste0(
         "as_pcalg() supports only standard null-of-independence tests; `%s` ",

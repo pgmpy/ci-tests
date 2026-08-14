@@ -1,8 +1,8 @@
 # pcalg integration demo for the citest package.
 #
-# Builds a continuous dataset with a known chain structure X -> Y -> Z, adapts a
-# citest Pearson-correlation test into a pcalg `indepTest` callback via as_pcalg(),
-# and runs pcalg::pc() to recover the skeleton/CPDAG. Run with:
+# Builds a continuous dataset with a known chain structure X -> Y -> Z, adapts
+# a citest Pearson-correlation test into a pcalg indepTest callback with
+# as_pcalg, then runs pcalg::pc to recover the skeleton and CPDAG. Run with:
 #
 #   conda run -n expert Rscript crates/citest-r/inst/examples/pcalg_demo.R
 #
