@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-14
 
-**Status:** Stage A implemented (see git history from `1db5d30`); Stages B–D specified, not scheduled
+**Status:** Stages A and B implemented (git history from `1db5d30`); Stages C–D specified, not scheduled
 
 ## Context
 
@@ -345,7 +345,9 @@ third-party-notice contracts migrated out of the deleted release test.
 
 ## Stage B — Core Simplification
 
-Confined to the core crate; no binding changes.
+**Implemented.** The QR fallback was deleted rather than tested (maintainer
+decision); the `PearsonEquivalence` constructor change reached the three
+bindings, so this stage was not confined to the core after all.
 
 - Macro-generate the five power-divergence types. `chi_squared.rs`,
   `cressie_read.rs`, `freeman_tukey.rs`, `log_likelihood.rs` and
