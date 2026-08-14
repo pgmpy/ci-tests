@@ -138,6 +138,10 @@ class Dataset(_Dataset):
         """
         import pandas as pd  # noqa: PLC0415 - optional dependency imported lazily
 
+        if df.columns.has_duplicates:
+            duplicates = df.columns[df.columns.duplicated()].unique().tolist()
+            raise CiError(f"duplicate column labels {duplicates!r}; column labels must be unique")
+
         columns: dict[str, tuple[str, Any]] = {}
         for name in df.columns:
             series = df[name]

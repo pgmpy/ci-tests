@@ -6,6 +6,7 @@ import pickle
 import threading
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import citest
@@ -389,3 +390,37 @@ def test_list_tests_reports_each_decision_rule() -> None:
     # The equivalence test is the one with the inverted convention.
     assert by_name["pearson_equivalence"]["rule"] == "p_value_lt"
     assert by_name["fisher_z"]["data_types"] == ["continuous"]
+
+
+def test_cirresult_repr_uses_python_literals() -> None:
+    """No Rust leaks into the repr: None, not Some(...); 1.0, not 1."""
+    data = Dataset(
+        {
+            "A": ("discrete", np.array([0.0, 1.0, 0.0, 1.0])),
+            "B": ("discrete", np.array([1.0, 1.0, 0.0, 0.0])),
+        }
+    )
+    result = ChiSquared(data).run_test("A", "B")
+    assert repr(result) == "CiResult(statistic=0.0, p_value=1.0, dof=1, effect_size=0.0)"
+
+    no_dof = FisherZ(
+        Dataset(
+            {
+                "X": ("continuous", np.array([0.1, 0.4, 0.2, 0.8, 0.5])),
+                "Y": ("continuous", np.array([0.7, 0.1, 0.6, 0.2, 0.4])),
+            }
+        )
+    ).run_test("X", "Y")
+    assert "dof=None" in repr(no_dof)
+    assert "Some(" not in repr(no_dof)
+
+
+def test_from_pandas_rejects_duplicate_column_labels() -> None:
+    """The failure mode names the actual problem.
+
+    A duplicate label used to surface as an AttributeError from deep inside
+    dtype inference, because df[name] returns a DataFrame rather than a Series.
+    """
+    df = pd.DataFrame([[0.0, 1.0], [1.0, 0.0]], columns=["A", "A"])
+    with pytest.raises(CiError, match="duplicate column labels"):
+        Dataset.from_pandas(df)

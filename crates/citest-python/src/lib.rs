@@ -120,8 +120,8 @@ fn resolve_xyz(
 
 /// The numeric outcome of a conditional-independence test.
 ///
-/// Mirrors [`citest::strategy::CiResult`]: `statistic`, `dof`, and
-/// `effect_size` are `None` when the test does not define them.
+/// `statistic`, `dof`, and `effect_size` are `None` when the test does not
+/// define them; `p_value` is always present.
 #[pyclass(name = "CiResult", module = "citest._citest", frozen)]
 #[derive(Clone)]
 pub struct PyCiResult {
@@ -149,9 +149,21 @@ impl From<CoreResult> for PyCiResult {
 #[pymethods]
 impl PyCiResult {
     fn __repr__(&self) -> String {
+        // Python-literal formatting: absent fields print as None, floats as
+        // Python floats (1.0, not Rust Display's 1), and no Rust Option debug
+        // syntax reaches the user.
+        fn float_repr(value: Option<f64>) -> String {
+            value.map_or_else(|| "None".to_string(), |v| format!("{v:?}"))
+        }
+        let dof = self
+            .dof
+            .map_or_else(|| "None".to_string(), |v| v.to_string());
         format!(
-            "CiResult(statistic={:?}, p_value={}, dof={:?}, effect_size={:?})",
-            self.statistic, self.p_value, self.dof, self.effect_size
+            "CiResult(statistic={}, p_value={:?}, dof={}, effect_size={})",
+            float_repr(self.statistic),
+            self.p_value,
+            dof,
+            float_repr(self.effect_size)
         )
     }
 }
@@ -370,7 +382,7 @@ macro_rules! ci_test_class {
                 Ok(Self { data, inner })
             }
 
-            /// Run the test for `x ⟂ y | z`, returning a [`CiResult`].
+            /// Run the test for `x ⟂ y | z`, returning a `CiResult`.
             ///
             /// `x` and `y` are column names or indices; `z` is a sequence of
             /// names/indices (default: empty conditioning set).
