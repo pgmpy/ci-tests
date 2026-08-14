@@ -1,7 +1,7 @@
 # Conditional Independence Testing
 
-[![CI](https://img.shields.io/github/actions/workflow/status/GiPHouse/Conditional-Independence-Testing/rust.yml?branch=main&logo=github&label=CI)](https://github.com/GiPHouse/Conditional-Independence-Testing/actions)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/GiPHouse/Conditional-Independence-Testing/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/pgmpy/ci-tests/rust.yml?branch=main&logo=github&label=CI)](https://github.com/pgmpy/ci-tests/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/pgmpy/ci-tests/blob/main/LICENSE)
 
 A fast, multi-language library for **conditional independence (CI) testing**: deciding
 whether two variables $X$ and $Y$ are independent given a (possibly empty) set of
@@ -20,12 +20,23 @@ single time), then query any `X ⟂ Y | Z` against it. Each test exposes the sam
 and `is_independent(X, Y, Z, significance_level)` applies that test's own decision rule.
 Per-test configuration (e.g. `yates`, `delta_threshold`) lives in the constructor.
 
-Each binding compiles the Rust core from source, so you need a Rust toolchain installed
-(via [rustup](https://rustup.rs)).
+Install from your language's registry:
+
+```bash
+pip install citest                 # Python
+npm install citest                 # JavaScript / WebAssembly
+cargo add citest                   # Rust
+```
+```r
+install.packages("citest")         # R
+```
+
+Released wheels, npm tarballs and CRAN binaries need no Rust toolchain. Building
+from a source checkout does — install one via [rustup](https://rustup.rs).
 
 ### Python
 
-Build and install the package from the repository root:
+From a source checkout:
 
 ```bash
 pip install maturin
@@ -67,7 +78,7 @@ eqv.is_independent("X", "Y", ["Z"], significance_level=0.05)   # -> bool (indepe
 
 ### R
 
-Install the package from the repository root (the R package is named `citest`):
+From a source checkout (the R package is named `citest`):
 
 ```r
 # install.packages("devtools")
@@ -207,7 +218,7 @@ directly as a crate. A shared golden fixture (`tests/fixtures/golden.json`) is t
 cross-language numeric parity gate. The R source package carries mechanically synchronized
 copies of that fixture and `citest` so its built archive can be checked outside the monorepo;
 `python crates/citest-r/tools/sync_package_assets.py --check` rejects drift. Full API documentation
-is published at <https://giphouse.github.io/Conditional-Independence-Testing/>.
+is published at <https://pgmpy.github.io/ci-tests/>.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup,
 coding standards, and how to add a new test. Each crate uses its own toolchain, so checks run

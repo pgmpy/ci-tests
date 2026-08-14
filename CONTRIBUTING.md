@@ -25,7 +25,7 @@ This document provides guidelines and instructions for contributing to the CI Te
 
 1. **Clone the repository**:
 ```bash
-   git clone https://github.com/GiPHouse/Conditional-Independence-Testing
+   git clone https://github.com/pgmpy/ci-tests
    cd Conditional-Independence-Testing
 ```
 
@@ -231,7 +231,7 @@ for it to the shared golden fixture (see [Testing](#testing)) so every language 
 
 - Add doc comments to your test struct and methods
 - Add the test to the "Available Tests" table in `README.md`
-- If it has a notable usage pattern, document it (e.g. in `docs/api-examples.md`)
+- If it has a notable usage pattern, add it to the README's examples
 
 ## Testing
 
@@ -340,7 +340,7 @@ first with [wasm-pack](https://rustwasm.github.io/wasm-pack/):
 # Build the WASM package into crates/citest-js/pkg
 wasm-pack build crates/citest-js --target nodejs
 
-# From crates/citest-js/tests
+# From crates/citest-js
 npm ci
 npm test    # vitest, includes golden.test.js
 ```
