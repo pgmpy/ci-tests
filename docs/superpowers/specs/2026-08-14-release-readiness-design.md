@@ -56,6 +56,9 @@ These were settled with the maintainer before this document was written.
    the public Rust API byte-identical.
 7. **Sequencing.** Stage A implemented now; B, C and D specified here and
    scheduled separately.
+8. **CRAN is a required target for 0.1.0.** Its blockers are therefore Stage A
+   work (A11), not later cleanup, and CRAN review latency gates the release of
+   all four packages.
 
 ## Naming
 
@@ -233,7 +236,76 @@ packages as "release ready" while one of the four parity gates is knowingly
 weaker than advertised is not defensible. Replace with an explicit absolute
 comparison matching the other three.
 
-### A11. Documentation truth-up
+### A11. CRAN submission readiness
+
+CRAN is a required target for 0.1.0, so the R-specific blockers are Stage A
+rather than later cleanup.
+
+**Why vendoring stays.** CRAN's Rust policy permits only two ways to supply
+crates: bundle them via `cargo vendor`, or download a pinned version *from a
+site under the maintainer's control* with checksum verification — explicitly not
+crates.io, and only as an escape hatch for oversized bundles. CRAN build
+machines are offline. The existing `vendor.tar.xz` approach is correct and
+matches real Rust CRAN packages: `gifski` and `arcgisutils` declare the same
+`SystemRequirements: Cargo (Rust's package manager), rustc …, xz`.
+
+**A11.1 — Attribution for redistributed crates (mandatory).** Policy: *"the
+authorship and copyright information for the Rust code must be included in the
+`DESCRIPTION` file. That includes any Rust sources included as dependencies."*
+Today the notice names 3 of 25 crates.
+
+Adopt the `gifski` pattern, which CRAN has accepted:
+
+- `Authors@R` gains
+  `person("Authors of the dependency Rust crates", role = "aut", comment = "see AUTHORS file")`.
+- `THIRD-PARTY-NOTICES` becomes `inst/AUTHORS`. A bare top-level
+  `THIRD-PARTY-NOTICES` is a non-standard file that draws an `R CMD check`
+  warning; `inst/AUTHORS` is the conventional location.
+- `inst/AUTHORS` lists every redistributed crate with version and licence.
+
+**A11.2 — Two licence facts the current metadata gets wrong.** Verified by
+reading each vendored crate's manifest:
+
+- `approx 0.5.1` is **Apache-2.0 only**, not dual-licensed. The bundle is
+  therefore not purely MIT-compatible-by-default, and this must be stated.
+- `unicode-ident 1.0.24` is `(MIT OR Apache-2.0) AND Unicode-3.0` — the `AND`
+  means the Unicode licence applies in addition, and needs its own entry.
+
+`License: MIT + file LICENSE` remains correct for the package's own code
+provided `inst/AUTHORS` documents the bundle; that is exactly what `gifski`
+does while vendoring non-MIT crates.
+
+**A11.3 — Prune never-compiled crates from the bundle.** `ci-core` declares
+`serde` and `serde_json` as `[dev-dependencies]` for `tests/golden.rs`. The
+vendored copy contains no tests — sync copies only `Cargo.toml`, `README.md` and
+`src/**` — so seven crates (`serde`, `serde_core`, `serde_derive`,
+`serde_json`, `memchr`, `itoa`, `zmij`, 2.68 MB uncompressed, 25% of the
+archive) are shipped, licence-documented and never compiled.
+
+Have `sync_package_assets.py` strip `[dev-dependencies]` when copying the
+manifest, then re-lock and re-vendor. Result: 25 → 18 crates, and seven fewer
+to attribute under A11.1.
+
+Note that both `syn` versions are genuinely required and must stay:
+`extendr-macros` and `readonly` need `syn 2.0.119`; `thiserror-impl` needs
+`syn 3.0.3`. That duplication is 4.5 MB and is not removable.
+
+**A11.4 — Installed size.** The audit measured 6.2 MB installed against CRAN's
+5 MB threshold. This is *not* caused by the vendored crate set —
+`vendor.tar.xz` is 1.02 MB, lives only in the source tarball, and `cleanup`
+deletes it after build. It is caused by the compiled `cir.so`: the R sub-workspace
+is a separate Cargo workspace and declares no `[profile.release]`, so it silently
+loses the repository's `lto = true, codegen-units = 1`. Add them there.
+
+**A11.5 — Check what CRAN checks.** R CI never runs `--as-cran`, so none of the
+above has ever failed a build. Add it, and fix what it reports. Known items:
+`DESCRIPTION` lacks `URL` and `BugReports`; its `Description` omits one of the
+eight tests; `man/` documents the internal extendr handles (`Dataset.Rd`) and
+the private `.cir_*` helpers (`dot-cir_*.Rd`), which should not be user-facing;
+the golden suite hard-requires `jsonlite` from `Suggests`; `tools/` ships a
+maintenance script to users.
+
+### A12. Documentation truth-up
 
 - CONTRIBUTING's instruction to run JS tests "from `crates/ci-js/tests`"
   describes a directory removed by an earlier consolidation.
@@ -259,6 +331,9 @@ inspected:
 - The wasm-pack output is importable under the new name.
 - The built R source archive **does** contain `tests/testthat/**` and its
   fixture copy, and `R CMD check` runs them.
+- `R CMD check --as-cran` on the built archive reports no ERROR or WARNING,
+  installed size is under CRAN's 5 MB threshold, and `inst/AUTHORS` names every
+  crate the vendor archive redistributes.
 
 `sync_package_assets.py --check` passes and covers the vendor-archive and
 third-party-notice contracts migrated out of the deleted release test.
@@ -386,10 +461,13 @@ Fix only genuine disagreements; keep idiomatic shapes.
   `R.home("lib")`. CI is unaffected: it uses a standard CRAN R.
 - **The rename produces a large mechanical diff.** It is isolated in its own
   commit, ahead of every behavioural change.
-- **The R package exceeds CRAN's 5 MB installed-size threshold** (measured at
-  6.2 MB), partly because the R sub-workspace silently drops the repository's
-  LTO release profile. This is a Stage D concern and does not block the other
-  three registries.
+- **CRAN gates the 0.1.0 release.** CRAN is a required target, so A11 must land
+  before any registry is published — a single version ships everywhere. CRAN
+  review latency is outside our control and is the schedule risk for the whole
+  release; the other three registries are technically ready much earlier.
+- **Re-vendoring rewrites binary and lock artifacts.** A11.3 regenerates
+  `vendor.tar.xz` (~1 MB binary) and `crates/citest-r/src/rust/Cargo.lock`, and
+  needs network access to populate the crate cache. Keep it in its own commit.
 - **`rextendr::document()` is deprecated** in favour of `devtools::document()`;
   `r.yml` still calls the deprecated form.
 
